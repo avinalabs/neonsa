@@ -103,7 +103,7 @@ function drawWorld(){
      itself, which otherwise draws on under the touch controls. */
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0,playTop(),VW,playH());
+  ctx.rect(0,clipTop(),VW,clipH());
   ctx.clip();
 
   setWorldTransform();
@@ -620,12 +620,19 @@ function drawWorld(){
   ctx.restore();                       // release the play-window clip
 
   /* edge of the play window, so the controls read as an apron rather than a crop */
-  if(hudBottomH()>24){
-    const by=VH-hudBottomH();
+  if(clipBotH()>24){
+    const by=VH-clipBotH();
     const g2=ctx.createLinearGradient(0,by-16,0,by+2);
     g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.85)");
     ctx.fillStyle=g2;ctx.fillRect(0,by-16,VW,18);
     ctx.fillStyle="rgba(25,230,255,0.16)";ctx.fillRect(0,by,VW,1);
+  }else if(IS_TOUCH){
+    /* the table runs on under the floating pads — sink it into shadow there so
+       the buttons stay readable over whatever happens to be behind them */
+    const fh=isShort()?74:104, fy=VH-fh;
+    const g2=ctx.createLinearGradient(0,fy,0,VH);
+    g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.78)");
+    ctx.fillStyle=g2;ctx.fillRect(0,fy,VW,fh);
   }
 
   /* ---- full-screen tints ---- */

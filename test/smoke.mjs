@@ -58,6 +58,58 @@ for (const vp of VIEWPORTS) {
     play.layout.h > 150,
     `h=${play.layout.h}`,
   );
+  if (vp.touch) {
+    /* The table is drawn further down the screen than the camera will ever
+       frame the ball, so the machine extends under the floating pads while the
+       shot you are taking stays above them. */
+    check(
+      results,
+      `${vp.name}: table drawn at least as low as it is framed`,
+      play.layout.clipH >= play.layout.h,
+      `clip=${play.layout.clipH} frame=${play.layout.h}`,
+    );
+    /* The pads overlap the table on purpose — what must never happen is a pad
+       overlapping the BALL. Play for a while and watch every frame for it. */
+    const worst = await page.evaluate(async () => {
+      const cv = document.getElementById("game").getBoundingClientRect();
+      const pads = ["tLeft", "tRight", "tLaunch", "tNudgeL", "tNudgeR"].map(
+        (id) => {
+          const r = document.getElementById(id).getBoundingClientRect();
+          return { id, l: r.left - cv.left, r: r.right - cv.left,
+                   t: r.top - cv.top, b: r.bottom - cv.top };
+        },
+      );
+      let hits = 0, frames = 0, sample = "";
+      /* 60 simulated seconds of real play, stepped rather than waited so the
+         whole sweep costs a fraction of a second */
+      for (let i = 0; i < 3600; i++) {
+        window.__NSA__.step(1);
+        const info = window.__NSA__.info();
+        if (info.state !== "PLAY" && info.state !== "BONUS") {
+          if (info.state === "OVER") break;
+          continue;
+        }
+        const p = info.ballScreen;
+        if (!p) continue;
+        frames++;
+        const rad = info.layout.ballPx / 2 + 2;
+        for (const q of pads) {
+          if (p.x + rad > q.l && p.x - rad < q.r &&
+              p.y + rad > q.t && p.y - rad < q.b) {
+            hits++;
+            if (!sample) sample = `${q.id} ball@${p.x},${p.y}`;
+          }
+        }
+      }
+      return { hits, frames, sample };
+    });
+    check(
+      results,
+      `${vp.name}: the ball never goes behind a touch pad`,
+      worst.hits === 0,
+      worst.sample || `${worst.frames} frames clear`,
+    );
+  }
   check(results, `${vp.name}: no errors`, errors.length === 0, errors[0] || "");
   await page.close();
 }

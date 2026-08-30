@@ -2,7 +2,6 @@
    p8 :: HUD + MINIMAP + SHARE CARD
    ============================================================ */
 function uiScale(){return clamp(Math.min(VW,VH)/760,0.72,1.35);}
-const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
 
 /* ============================================================
    HUD GEOMETRY
@@ -22,7 +21,18 @@ function actionPanelH(){
   return 28*U;
 }
 function hudTopH(){return topBarH()+hudTopSmooth;}
-function hudBottomH(){return IS_TOUCH?(isShort()?84:(VW<600?92:112)):Math.round(10*uiScale());}
+/* Two different bottoms, on purpose.
+   hudBottomH() is the FRAMING band: the camera never lets the ball or the
+     flippers fall below it, so a touch pad can never sit on top of the shot
+     you are taking.
+   clipBotH() is the DRAWING band: the table itself keeps going all the way
+     down to the pads, which float in the corners. The machine extends
+     further down the screen without the ball ever hiding behind a button.
+   Landscape floats every pad, so there the two are the same. */
+function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?92:112)):Math.round(10*uiScale());}
+function clipBotH(){return IS_TOUCH?(isShort()?18:14):Math.round(10*uiScale());}
+/* portrait parks LAUNCH above the right flipper pad; keep the minimap clear of it */
+function launchPadClear(){return IS_TOUCH&&!isShort()?62:0;}
 function hudTick(dt){
   const want=actionPanelH();
   hudTopSmooth+=clamp(want-hudTopSmooth,-dt*900,dt*900);
@@ -188,7 +198,9 @@ function drawHUD(){
     const scl=a.big?1+0.2*Math.sin(prog*Math.PI):1;
     const al=prog<0.1?prog*10:(prog>0.82?(1-prog)*5.5:1);
     ctx.save();
-    ctx.translate(VW/2,playTop()+playH()*0.24);
+    /* portrait stacks the meters down the left edge, so drop the big
+       announcement below them instead of writing across them */
+    ctx.translate(VW/2,playTop()+playH()*(VW<600?0.34:0.24));
     ctx.scale(scl,scl);
     ctx.globalAlpha=clamp(al,0,1);
     let fs=Math.round(Math.min((a.big?44:29)*U, playH()*(a.big?0.15:0.11)));
@@ -315,8 +327,11 @@ function meter(x,y,w,h,v,cols,label,hot){
 /* ---------- MINIMAP: small, cornered, out of the shot line ---------- */
 let minimapAlpha=1;
 function drawMinimap(U){
-  const h=clamp(Math.min(VH*0.30,VW*0.34),110,270), w=h*PW/PH;
-  const x=VW-w-10*U, y=VH-hudBottomH()-h-10*U;
+  const short=isShort();
+  const h=clamp(Math.min(VH*(short?0.36:0.30),VW*0.34),104,270), w=h*PW/PH;
+  const x=VW-w-10*U;
+  /* in landscape the bottom-right corner belongs to the flipper pad */
+  const y=short?(playTop()+playH()*0.33-h/2):(VH-hudBottomH()-h-10*U-launchPadClear());
   const sx=w/PW, sy=h/PH;
   const fb=focusBall();
   let dim=1;

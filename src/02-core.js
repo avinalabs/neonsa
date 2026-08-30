@@ -5,6 +5,9 @@
    p2 :: constants, state, math utils, audio engine
    ============================================================ */
 
+/* coarse pointer = phone/tablet: drives the on-screen pads, the HUD bands
+   and every piece of control wording the game shows. */
+const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
 const PW=1760, PH=2900;                 // playfield (world) size
 const BALLR=20;
 const G=3100;                           // gravity

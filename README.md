@@ -49,9 +49,12 @@ And **altitude is the multiplier**, which is what makes climbing worth the risk:
 | `Z` `X` `W` | Nudge left / right / up. Three nudges in quick succession and you TILT |
 | `C` `P` `M` | Overview camera · pause · mute |
 
-**Phone** — two large FLIP pads in the bottom corners, NUDGE beside them, LAUNCH in the
-middle. You can also just tap the left or right half of the table, and **both thumbs work
-at once** — lifting one finger never drops a flipper another is still holding.
+**Phone** — two large FLIP pads in the bottom corners with NUDGE beside them, and LAUNCH
+parked above-left of the right pad so the bottom centre of the screen — where the flippers
+are — belongs entirely to the table. You can also just tap the left or right half of the
+table, and **both thumbs work at once**: lifting one finger never drops a flipper another
+is still holding. Landscape gets wide pill-shaped pads, which are a much bigger target for
+the height they cost.
 
 ---
 
@@ -120,7 +123,7 @@ node build.mjs --check # fail if index.html is stale (CI runs this)
 ```bash
 npm install
 npx playwright install chromium
-npm test               # smoke: 6 viewports, game-over flow, multi-touch
+npm test               # smoke: 6 viewports, pads vs ball, game-over flow, multi-touch
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
 ```
@@ -150,6 +153,14 @@ Every one of these caused a real ball trap, and they are all easy to reintroduce
 - **Aprons need ~8° of slope.** At 4° a ball creeps instead of sliding to the drain.
 - **Canvas interpolates gradient stops un-premultiplied** — a bright low-alpha stop beside
   a dark high-alpha one renders as a bright band, not a subtle tint.
+
+On phones the table is deliberately drawn **lower than the camera will ever frame the
+ball**. `hudBottomH()` is the framing band — the camera never lets the ball or the flippers
+fall below it — while `clipBotH()` is the drawing band, which runs almost to the bottom
+edge. The machine therefore continues underneath the floating pads, so you see more of it,
+while the shot you are actually taking stays above them. `test/smoke.mjs` plays 60
+simulated seconds on each touch viewport and fails if the ball's on-screen circle ever
+intersects a pad.
 
 And on rendering: neon is drawn as **layered strokes**, wide-and-faint under
 narrow-and-bright, over `Path2D` geometry baked once at load. It used to use canvas

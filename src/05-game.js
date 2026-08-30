@@ -729,8 +729,8 @@ function wizardTick(dt){
 const cannon={loaded:false,ball:null,ang:-Math.PI/2,dir:1,t:0,cool:0};
 function cannonLoad(b){
   cannon.loaded=true;cannon.ball=b;cannon.ang=-2.3;cannon.dir=1;
-  announce("CANNON LOADED — PRESS SPACE",YL,true);
-  toast("AIM WITH THE SWEEP, FIRE WITH SPACE",YL,"▶");
+  announce(IS_TOUCH?"CANNON LOADED — TAP LAUNCH":"CANNON LOADED — PRESS SPACE",YL,true);
+  toast(IS_TOUCH?"AIM WITH THE SWEEP, TAP LAUNCH TO FIRE":"AIM WITH THE SWEEP, FIRE WITH SPACE",YL,"▶");
   SND.lock();
 }
 function cannonFire(){

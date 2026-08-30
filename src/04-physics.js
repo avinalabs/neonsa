@@ -10,6 +10,9 @@ const VIEW_MIN=760,VIEW_MAX=2300;
    in particular. playTop()/hudBottomH() live in p8 with the HUD.        */
 function playTop(){return hudTopH();}
 function playH(){return Math.max(160,VH-playTop()-hudBottomH());}
+/* the visible slice of table — larger than the framing box on phones, see p8 */
+function clipTop(){return playTop();}
+function clipH(){return Math.max(160,VH-clipTop()-clipBotH());}
 function camScale(){return playH()/cam.view;}
 function camAspect(){return VW/Math.max(playH(),1);}
 function w2s(x,y){
@@ -37,7 +40,8 @@ function focusBall(){
 }
 function updateCamera(dt){
   const aspect=camAspect();
-  const TIGHT=VW<700;                   // phone-shaped: prioritise a steady frame
+  const TIGHT=VW<700;                   // portrait phone: prioritise a steady frame
+  const SHORT=VH<560;                   // landscape phone / short window
   const OVER=420;                       // how far past the table edge the camera may look
 
   if(camMode==="overview"){
@@ -82,9 +86,16 @@ function updateCamera(dt){
   /* Narrow windows and phones must still see a usable slice of the table's
      width — and on a phone the zoom is held inside a narrow band, because a
      view that swings between extremes reads as the camera misbehaving. */
-  const minW=(TIGHT?820:640)/Math.max(aspect,0.01);
+  const minW=(TIGHT?1040:640)/Math.max(aspect,0.01);
   cam.tview=Math.max(cam.tview,minW);
   if(TIGHT&&camMode!=="overview")cam.tview=Math.min(cam.tview,minW*1.22);
+  /* A short window is height-starved, so spend the pixels on showing more of
+     the tower rather than magnifying it: hold the on-screen scale steady and
+     let the view grow with the play window. */
+  if(SHORT&&camMode!=="overview"){
+    const steady=playH()*2.95;
+    cam.tview=clamp(cam.tview,steady,steady*1.3);
+  }
   cam.tview=clamp(cam.tview,VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
 
   const halfV=cam.tview/2, halfH=cam.tview*aspect/2;
@@ -107,7 +118,11 @@ function updateCamera(dt){
       const s=camScale(),vpT=playTop(),vpH=playH();
       const sx=(f.x-cam.x)*s+VW/2;
       const sy=(f.y-cam.y)*s+vpT+vpH/2;
-      const mx=Math.max(48,VW*0.17), my=Math.max(48,vpH*0.17);
+      /* On a short screen the pads float over the corners instead of sitting in
+         a reserved band, so the margins here are what keeps the ball out from
+         under a button: wide enough to clear LAUNCH on the right, tall enough
+         to clear the flipper pads along the bottom. */
+      const mx=Math.max(48,VW*(SHORT?0.21:0.17)), my=Math.max(SHORT?72:48,vpH*0.17);
       if(sx<mx)cam.x+=(sx-mx)/s;
       else if(sx>VW-mx)cam.x+=(sx-(VW-mx))/s;
       if(sy<vpT+my)cam.y+=(sy-(vpT+my))/s;

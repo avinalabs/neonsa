@@ -130,22 +130,32 @@
     #overScreen button.nbtn{margin-top:10px}
   }
   /* phone layout — must come last so it wins over the base rules */
-  /* Landscape phones are short but very wide, so the pads become wide pills:
-     a much larger touch target for the same height cost as a small circle. */
+  /* Landscape phones are short but very wide. The pads become wide pills — a
+     much larger touch target for the height — and LAUNCH moves up beside the
+     right flipper so the bottom centre stays clear. Nothing is reserved as a
+     band; the pads sit in the corners the ball never reaches, and the table
+     runs to the bottom of the screen. */
   @media (max-height:560px) and (pointer:coarse){
-    #touchUI{padding:6px 10px}
+    #touchUI{padding:8px 10px}
     #touchUI .tbtn{width:78px;height:52px;border-radius:26px;font-size:10px;
-      border-width:2px;line-height:1.15;flex-direction:row;gap:5px}
-    #touchUI .tbtn.flip{width:108px;height:66px;border-radius:33px;font-size:14px;border-width:3px}
-    #touchUI .tbtn.launch{width:88px;height:58px;border-radius:29px;font-size:12px}
+      border-width:2px;line-height:1.15;flex-direction:row;gap:5px;
+      background:rgba(4,8,28,.62);backdrop-filter:blur(2px)}
+    #touchUI .tbtn.flip{width:110px;height:66px;border-radius:33px;font-size:14px;border-width:3px}
+    #touchUI .tbtn.launch{width:88px;height:56px;border-radius:28px;font-size:12px}
     #touchUI .tgrp{gap:9px}
+    #touchUI .tgrp:nth-child(2){position:absolute;right:64px;bottom:86px}
   }
+  /* Portrait phones get the same idea: LAUNCH lifts out of the bottom centre
+     and parks above-left of the right flipper pad, so the whole middle of the
+     bottom edge belongs to the table. */
   @media (max-width:600px){
     #touchUI{padding:9px 6px}
     #touchUI .tbtn{width:48px;height:48px;font-size:9px;border-width:2px;line-height:1.15}
     #touchUI .tbtn.flip{width:68px;height:68px;font-size:11px;border-width:3px}
-    #touchUI .tbtn.launch{width:58px;height:58px;font-size:10px}
+    #touchUI .tbtn.launch{width:64px;height:52px;border-radius:26px;font-size:11px;
+      background:rgba(4,8,28,.62);backdrop-filter:blur(2px)}
     #touchUI .tgrp{gap:6px}
+    #touchUI .tgrp:nth-child(2){position:absolute;right:52px;bottom:82px}
     #hudBtns{gap:5px;top:8px;right:8px}
     #hudBtns .mini{padding:5px 8px;font-size:11px}
     .card{padding:16px 14px}
@@ -268,6 +278,9 @@
    p2 :: constants, state, math utils, audio engine
    ============================================================ */
 
+/* coarse pointer = phone/tablet: drives the on-screen pads, the HUD bands
+   and every piece of control wording the game shows. */
+const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
 const PW=1760, PH=2900;                 // playfield (world) size
 const BALLR=20;
 const G=3100;                           // gravity
@@ -767,6 +780,9 @@ const VIEW_MIN=760,VIEW_MAX=2300;
    in particular. playTop()/hudBottomH() live in p8 with the HUD.        */
 function playTop(){return hudTopH();}
 function playH(){return Math.max(160,VH-playTop()-hudBottomH());}
+/* the visible slice of table — larger than the framing box on phones, see p8 */
+function clipTop(){return playTop();}
+function clipH(){return Math.max(160,VH-clipTop()-clipBotH());}
 function camScale(){return playH()/cam.view;}
 function camAspect(){return VW/Math.max(playH(),1);}
 function w2s(x,y){
@@ -794,7 +810,8 @@ function focusBall(){
 }
 function updateCamera(dt){
   const aspect=camAspect();
-  const TIGHT=VW<700;                   // phone-shaped: prioritise a steady frame
+  const TIGHT=VW<700;                   // portrait phone: prioritise a steady frame
+  const SHORT=VH<560;                   // landscape phone / short window
   const OVER=420;                       // how far past the table edge the camera may look
 
   if(camMode==="overview"){
@@ -839,9 +856,16 @@ function updateCamera(dt){
   /* Narrow windows and phones must still see a usable slice of the table's
      width — and on a phone the zoom is held inside a narrow band, because a
      view that swings between extremes reads as the camera misbehaving. */
-  const minW=(TIGHT?820:640)/Math.max(aspect,0.01);
+  const minW=(TIGHT?1040:640)/Math.max(aspect,0.01);
   cam.tview=Math.max(cam.tview,minW);
   if(TIGHT&&camMode!=="overview")cam.tview=Math.min(cam.tview,minW*1.22);
+  /* A short window is height-starved, so spend the pixels on showing more of
+     the tower rather than magnifying it: hold the on-screen scale steady and
+     let the view grow with the play window. */
+  if(SHORT&&camMode!=="overview"){
+    const steady=playH()*2.95;
+    cam.tview=clamp(cam.tview,steady,steady*1.3);
+  }
   cam.tview=clamp(cam.tview,VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
 
   const halfV=cam.tview/2, halfH=cam.tview*aspect/2;
@@ -864,7 +888,11 @@ function updateCamera(dt){
       const s=camScale(),vpT=playTop(),vpH=playH();
       const sx=(f.x-cam.x)*s+VW/2;
       const sy=(f.y-cam.y)*s+vpT+vpH/2;
-      const mx=Math.max(48,VW*0.17), my=Math.max(48,vpH*0.17);
+      /* On a short screen the pads float over the corners instead of sitting in
+         a reserved band, so the margins here are what keeps the ball out from
+         under a button: wide enough to clear LAUNCH on the right, tall enough
+         to clear the flipper pads along the bottom. */
+      const mx=Math.max(48,VW*(SHORT?0.21:0.17)), my=Math.max(SHORT?72:48,vpH*0.17);
       if(sx<mx)cam.x+=(sx-mx)/s;
       else if(sx>VW-mx)cam.x+=(sx-(VW-mx))/s;
       if(sy<vpT+my)cam.y+=(sy-(vpT+my))/s;
@@ -2031,8 +2059,8 @@ function wizardTick(dt){
 const cannon={loaded:false,ball:null,ang:-Math.PI/2,dir:1,t:0,cool:0};
 function cannonLoad(b){
   cannon.loaded=true;cannon.ball=b;cannon.ang=-2.3;cannon.dir=1;
-  announce("CANNON LOADED — PRESS SPACE",YL,true);
-  toast("AIM WITH THE SWEEP, FIRE WITH SPACE",YL,"▶");
+  announce(IS_TOUCH?"CANNON LOADED — TAP LAUNCH":"CANNON LOADED — PRESS SPACE",YL,true);
+  toast(IS_TOUCH?"AIM WITH THE SWEEP, TAP LAUNCH TO FIRE":"AIM WITH THE SWEEP, FIRE WITH SPACE",YL,"▶");
   SND.lock();
 }
 function cannonFire(){
@@ -2617,7 +2645,7 @@ function drawWorld(){
      itself, which otherwise draws on under the touch controls. */
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0,playTop(),VW,playH());
+  ctx.rect(0,clipTop(),VW,clipH());
   ctx.clip();
 
   setWorldTransform();
@@ -3134,12 +3162,19 @@ function drawWorld(){
   ctx.restore();                       // release the play-window clip
 
   /* edge of the play window, so the controls read as an apron rather than a crop */
-  if(hudBottomH()>24){
-    const by=VH-hudBottomH();
+  if(clipBotH()>24){
+    const by=VH-clipBotH();
     const g2=ctx.createLinearGradient(0,by-16,0,by+2);
     g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.85)");
     ctx.fillStyle=g2;ctx.fillRect(0,by-16,VW,18);
     ctx.fillStyle="rgba(25,230,255,0.16)";ctx.fillRect(0,by,VW,1);
+  }else if(IS_TOUCH){
+    /* the table runs on under the floating pads — sink it into shadow there so
+       the buttons stay readable over whatever happens to be behind them */
+    const fh=isShort()?74:104, fy=VH-fh;
+    const g2=ctx.createLinearGradient(0,fy,0,VH);
+    g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.78)");
+    ctx.fillStyle=g2;ctx.fillRect(0,fy,VW,fh);
   }
 
   /* ---- full-screen tints ---- */
@@ -3240,7 +3275,6 @@ function drawBoss(){
    p8 :: HUD + MINIMAP + SHARE CARD
    ============================================================ */
 function uiScale(){return clamp(Math.min(VW,VH)/760,0.72,1.35);}
-const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
 
 /* ============================================================
    HUD GEOMETRY
@@ -3260,7 +3294,18 @@ function actionPanelH(){
   return 28*U;
 }
 function hudTopH(){return topBarH()+hudTopSmooth;}
-function hudBottomH(){return IS_TOUCH?(isShort()?84:(VW<600?92:112)):Math.round(10*uiScale());}
+/* Two different bottoms, on purpose.
+   hudBottomH() is the FRAMING band: the camera never lets the ball or the
+     flippers fall below it, so a touch pad can never sit on top of the shot
+     you are taking.
+   clipBotH() is the DRAWING band: the table itself keeps going all the way
+     down to the pads, which float in the corners. The machine extends
+     further down the screen without the ball ever hiding behind a button.
+   Landscape floats every pad, so there the two are the same. */
+function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?92:112)):Math.round(10*uiScale());}
+function clipBotH(){return IS_TOUCH?(isShort()?18:14):Math.round(10*uiScale());}
+/* portrait parks LAUNCH above the right flipper pad; keep the minimap clear of it */
+function launchPadClear(){return IS_TOUCH&&!isShort()?62:0;}
 function hudTick(dt){
   const want=actionPanelH();
   hudTopSmooth+=clamp(want-hudTopSmooth,-dt*900,dt*900);
@@ -3426,7 +3471,9 @@ function drawHUD(){
     const scl=a.big?1+0.2*Math.sin(prog*Math.PI):1;
     const al=prog<0.1?prog*10:(prog>0.82?(1-prog)*5.5:1);
     ctx.save();
-    ctx.translate(VW/2,playTop()+playH()*0.24);
+    /* portrait stacks the meters down the left edge, so drop the big
+       announcement below them instead of writing across them */
+    ctx.translate(VW/2,playTop()+playH()*(VW<600?0.34:0.24));
     ctx.scale(scl,scl);
     ctx.globalAlpha=clamp(al,0,1);
     let fs=Math.round(Math.min((a.big?44:29)*U, playH()*(a.big?0.15:0.11)));
@@ -3553,8 +3600,11 @@ function meter(x,y,w,h,v,cols,label,hot){
 /* ---------- MINIMAP: small, cornered, out of the shot line ---------- */
 let minimapAlpha=1;
 function drawMinimap(U){
-  const h=clamp(Math.min(VH*0.30,VW*0.34),110,270), w=h*PW/PH;
-  const x=VW-w-10*U, y=VH-hudBottomH()-h-10*U;
+  const short=isShort();
+  const h=clamp(Math.min(VH*(short?0.36:0.30),VW*0.34),104,270), w=h*PW/PH;
+  const x=VW-w-10*U;
+  /* in landscape the bottom-right corner belongs to the flipper pad */
+  const y=short?(playTop()+playH()*0.33-h/2):(VH-hudBottomH()-h-10*U-launchPadClear());
   const sx=w/PW, sy=h/PH;
   const fb=focusBall();
   let dim=1;
@@ -4102,7 +4152,11 @@ window.__NSA__={
       d:b.deck,rail:b.rail?b.rail.short:null,lane:b.launchT>=0,scoop:b.scoop?b.scoop.name:null,
       mag:!!b.magnet,inLane:b.inLane})),
     cam:{x:Math.round(cam.x),y:Math.round(cam.y),view:Math.round(cam.view)},
-    layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH())},
+    layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH()),
+      clipH:Math.round(clipH()),clipBot:Math.round(clipBotH()),
+      frameBot:Math.round(VH-hudBottomH()),clipBotY:Math.round(clipTop()+clipH()),
+      seenW:Math.round(VW/camScale()),seenH:Math.round(clipH()/camScale()),
+      framedH:Math.round(playH()/camScale()),ballPx:Math.round(2*BALLR*camScale())},
     ballScreen:(()=>{const f=focusBall();if(!f)return null;const p=w2s(f.x,f.y);
       return{x:Math.round(p.x),y:Math.round(p.y)};})()};},
   set(k,v){if(k==="grav")gravTarget=v;},

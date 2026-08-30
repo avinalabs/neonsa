@@ -361,7 +361,11 @@ window.__NSA__={
       d:b.deck,rail:b.rail?b.rail.short:null,lane:b.launchT>=0,scoop:b.scoop?b.scoop.name:null,
       mag:!!b.magnet,inLane:b.inLane})),
     cam:{x:Math.round(cam.x),y:Math.round(cam.y),view:Math.round(cam.view)},
-    layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH())},
+    layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH()),
+      clipH:Math.round(clipH()),clipBot:Math.round(clipBotH()),
+      frameBot:Math.round(VH-hudBottomH()),clipBotY:Math.round(clipTop()+clipH()),
+      seenW:Math.round(VW/camScale()),seenH:Math.round(clipH()/camScale()),
+      framedH:Math.round(playH()/camScale()),ballPx:Math.round(2*BALLR*camScale())},
     ballScreen:(()=>{const f=focusBall();if(!f)return null;const p=w2s(f.x,f.y);
       return{x:Math.round(p.x),y:Math.round(p.y)};})()};},
   set(k,v){if(k==="grav")gravTarget=v;},
