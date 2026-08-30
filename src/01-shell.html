@@ -25,13 +25,14 @@
   canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;background:#02010a;
     touch-action:none}
   .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    text-align:center;z-index:30;padding:20px;background:rgba(2,2,12,.86);backdrop-filter:blur(7px)}
+    text-align:center;z-index:30;padding:20px;background:rgba(2,2,12,.86);backdrop-filter:blur(7px);
+    touch-action:pan-y;overflow-y:auto}
   .hidden{display:none!important}
   .card{max-width:820px;width:100%;padding:22px 26px;border-radius:16px;
     background:linear-gradient(160deg,rgba(12,6,42,.9),rgba(2,2,14,.9));
     border:1px solid rgba(25,230,255,.35);
     box-shadow:0 0 60px rgba(25,230,255,.14),inset 0 0 90px rgba(255,43,214,.05);
-    max-height:94vh;overflow:auto}
+    max-height:94vh;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch}
   h1.logo{font-size:clamp(30px,7vw,66px);font-weight:900;font-style:italic;letter-spacing:2px;line-height:.95;
     background:linear-gradient(90deg,var(--cy),var(--pu),var(--mg),var(--yl));
     -webkit-background-clip:text;background-clip:text;color:transparent;
@@ -46,6 +47,16 @@
   .col h3{font-size:11px;letter-spacing:3px;color:var(--mg);margin-bottom:6px;font-weight:900;
     text-shadow:0 0 10px rgba(255,43,214,.6)}
   .col b{color:var(--cy)} .col u{color:var(--yl);text-decoration:none} .col em{color:var(--gr);font-style:normal}
+  /* show only the controls that apply to whatever the player is holding */
+  .touch-only{display:none}
+  @media (pointer:coarse){
+    .desk-only{display:none}
+    .touch-only{display:block}
+  }
+  .pad{display:inline-block;min-width:20px;padding:1px 8px;border-radius:20px;border:1px solid var(--gr);
+    color:var(--gr);font-weight:900;font-size:.86em;margin:0 2px;letter-spacing:.5px}
+  .pad.y{border-color:var(--yl);color:var(--yl)}
+  .pad.c{border-color:var(--cy);color:var(--cy)}
   kbd{display:inline-block;min-width:20px;padding:1px 6px;border-radius:5px;border:1px solid var(--cy);
     box-shadow:0 0 6px rgba(25,230,255,.45) inset;color:var(--cy);font-family:inherit;font-weight:700;
     font-size:.9em;margin:0 1px}
@@ -96,6 +107,28 @@
   .chip b{color:var(--yl)}
   #loadNote{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#5f7fa8;
     font-size:13px;letter-spacing:3px;z-index:5}
+  /* landscape phones: compress the card so INSERT COIN stays on screen */
+  @media (max-height:700px){
+    .overlay{padding:8px}
+    .card{padding:12px 16px;max-height:98vh}
+    h1.logo{font-size:clamp(22px,5.5vw,38px)}
+    .sub{font-size:clamp(9px,1.6vw,12px);letter-spacing:min(1vw,6px);margin-top:2px}
+    .tag{font-size:clamp(8px,1.2vw,10px);margin-top:5px;letter-spacing:2px}
+    .cols{gap:12px;margin-top:9px}
+    .col{font-size:11px;line-height:1.5;min-width:190px}
+    .col h3{font-size:10px;margin-bottom:3px}
+    button.nbtn{padding:9px 24px;font-size:15px;margin-top:10px}
+    #finalScore{font-size:clamp(26px,6.5vw,40px)}
+    #shareImg{max-height:34vh}
+  }
+  /* short but wide (landscape phone): put the score card beside the results
+     instead of below them, so PLAY AGAIN never falls off the screen */
+  @media (max-height:700px) and (min-width:680px){
+    #shareImg{float:right;max-height:74vh;margin:0 0 6px 18px}
+    #lb{margin:8px 0 0 0;text-align:left;font-size:12px;line-height:1.55}
+    #overScreen .row{margin-top:10px}
+    #overScreen button.nbtn{margin-top:10px}
+  }
   /* phone layout — must come last so it wins over the base rules */
   @media (max-height:520px) and (pointer:coarse){
     #touchUI{padding:6px 6px}
@@ -126,15 +159,24 @@
     <div class="sub">A S C E N S I O N</div>
     <div class="tag">A TEN-STOREY PINBALL TOWER &mdash; THE CAMERA RIDES THE BALL</div>
     <div class="cols">
-      <div class="col">
-        <h3>CONTROLS</h3>
-        <kbd>&#9664;</kbd><kbd>&#9654;</kbd> or <kbd>A</kbd><kbd>D</kbd> &mdash; all flippers<br>
-        <em>On a phone:</em> the two green <b>FLIP</b> pads, or just tap the
-        left/right half of the table &mdash; both thumbs at once works.<br>
-        <kbd>SPACE</kbd> hold &mdash; plunger (pick your floor)<br>
-        <kbd>SPACE</kbd> in play &mdash; <em>MAG-GRAB</em> (3 per ball)<br>
-        <kbd>Z</kbd><kbd>X</kbd> nudge &#183; <kbd>W</kbd> bump up<br>
-        <kbd>C</kbd> overview cam &#183; <kbd>P</kbd> pause &#183; <kbd>M</kbd> mute
+      <div class="col desk-only">
+        <h3>KEYS</h3>
+        <kbd>&#9664;</kbd><kbd>&#9654;</kbd> or <kbd>A</kbd><kbd>D</kbd> &mdash; flippers, every deck at once<br>
+        <kbd>SPACE</kbd> hold &mdash; plunger. Release picks your floor<br>
+        <kbd>SPACE</kbd> in play &mdash; <em>MAG-GRAB</em>, 3 per ball<br>
+        <kbd>Z</kbd><kbd>X</kbd> nudge &#183; <kbd>W</kbd> bump up.
+        Three quick nudges and you <u>TILT</u><br>
+        <kbd>C</kbd> overview &#183; <kbd>P</kbd> pause &#183; <kbd>M</kbd> mute
+      </div>
+      <div class="col touch-only">
+        <h3>TOUCH</h3>
+        <span class="pad">FLIP</span> pads, bottom corners &mdash; or just tap the
+        left or right half of the table. <em>Both thumbs at once works.</em><br>
+        <span class="pad y">LAUNCH</span> hold &mdash; plunger. Release picks your floor<br>
+        <span class="pad y">LAUNCH</span> in play &mdash; <em>MAG-GRAB</em>, 3 per ball<br>
+        <span class="pad c">NUDGE</span> &mdash; shove the table. Three in a row and
+        you <u>TILT</u><br>
+        <span class="pad c">CAM</span> sees the whole tower &#183; <span class="pad c">II</span> pauses
       </div>
       <div class="col">
         <h3>THE TOWER</h3>
@@ -153,7 +195,7 @@
       </div>
     </div>
     <button class="nbtn" id="startBtn">&#9889; INSERT COIN &#9889;</button>
-    <div class="tag" style="margin-top:10px">or press <kbd>ENTER</kbd></div>
+    <div class="tag desk-only" style="margin-top:10px">or press <kbd>ENTER</kbd></div>
   </div>
 </div>
 
