@@ -3,7 +3,7 @@
 A pinball machine ten times the size of your screen. Five decks stacked 2,900 pixels
 high, each with its own flipper pair, and a camera that rides the ball.
 
-**[Play it →](https://javina89.github.io/neonsa/)**
+**[Play it →](https://avinalabs.github.io/neonsa/)**
 
 One HTML file. No dependencies, no assets, no build step to run it — every sound is
 synthesised in the Web Audio API and every pixel is drawn to a canvas.
@@ -75,7 +75,7 @@ achievements, arcade initials, a local top‑8 leaderboard, and a shareable scor
 ## Running it
 
 ```bash
-git clone https://github.com/javina89/neonsa.git
+git clone https://github.com/avinalabs/neonsa.git
 cd neonsa
 open index.html          # or just double-click it
 ```
@@ -83,7 +83,7 @@ open index.html          # or just double-click it
 That's genuinely it — `index.html` is self-contained and works from `file://`.
 
 To publish it: **Settings → Pages → Source: Deploy from a branch → `main` / `/ (root)`**.
-It'll be live at `https://javina89.github.io/neonsa/`.
+It'll be live at `https://avinalabs.github.io/neonsa/`.
 
 ---
 
