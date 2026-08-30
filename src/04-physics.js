@@ -37,6 +37,7 @@ function focusBall(){
 }
 function updateCamera(dt){
   const aspect=camAspect();
+  const TIGHT=VW<700;                   // phone-shaped: prioritise a steady frame
   const OVER=420;                       // how far past the table edge the camera may look
 
   if(camMode==="overview"){
@@ -64,23 +65,27 @@ function updateCamera(dt){
         const sp=Math.hypot(b.vx,b.vy);
         let tx=b.x+clamp(b.vx*0.12,-300,300);
         let ty=b.y+clamp(b.vy*0.12,-340,340);
-        let tv=clamp(VIEW_MIN+sp*0.15+(b.rail?200:0),VIEW_MIN,1560);
+        let tv=clamp(VIEW_MIN+Math.min(sp*0.12,300)+(b.rail?180:0),VIEW_MIN,1560);
         /* As the ball drops toward the flippers of whatever deck it is on,
            lean the shot into frame so you can aim instead of guessing. */
         const fy=DECK_FLIP_Y[b.deck];
         if(fy&&b.y<fy&&b.vy>-260){
           const t=clamp((b.y-(fy-1150))/1150,0,1);
           ty=lerp(ty,fy-210,t*0.62);
-          tv=Math.max(tv,Math.min(1340,(fy+170-b.y)+430));
+          tv=Math.max(tv,Math.min(TIGHT?1180:1340,(fy+170-b.y)+430));
         }
         cam.tx=tx;cam.ty=ty;cam.tview=tv;
       }
     }
     if(boss.active&&boss.hp>0&&balls.some(b=>b.y<900))cam.tview=Math.max(cam.tview,1120);
   }
-  /* narrow windows and phones must still see a usable slice of the table's width */
-  cam.tview=clamp(Math.max(cam.tview,640/Math.max(aspect,0.01)),
-                  VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
+  /* Narrow windows and phones must still see a usable slice of the table's
+     width — and on a phone the zoom is held inside a narrow band, because a
+     view that swings between extremes reads as the camera misbehaving. */
+  const minW=(TIGHT?820:640)/Math.max(aspect,0.01);
+  cam.tview=Math.max(cam.tview,minW);
+  if(TIGHT&&camMode!=="overview")cam.tview=Math.min(cam.tview,minW*1.22);
+  cam.tview=clamp(cam.tview,VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
 
   const halfV=cam.tview/2, halfH=cam.tview*aspect/2;
   if(halfV*2<PH+OVER)cam.ty=clamp(cam.ty,halfV-OVER,PH-halfV+OVER);else cam.ty=PH/2;
@@ -89,7 +94,9 @@ function updateCamera(dt){
   const k=1-Math.pow(0.0011,dt);
   cam.x=lerp(cam.x,cam.tx,k);
   cam.y=lerp(cam.y,cam.ty,k);
-  cam.view=lerp(cam.view,cam.tview*(1-cam.kick*0.15),1-Math.pow(0.0035,dt));
+  const wantView=cam.tview*(1-cam.kick*0.15);
+  if(Math.abs(wantView-cam.view)>cam.view*0.012)
+    cam.view=lerp(cam.view,wantView,1-Math.pow(TIGHT?0.10:0.03,dt));
   cam.kick*=Math.pow(0.02,dt);
 
   /* Hard guarantee: whatever the smoothing was doing, the ball you are

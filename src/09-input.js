@@ -172,6 +172,25 @@ addEventListener("keyup",e=>{
   }
 });
 
+/* iOS Safari ignores user-scalable=no, and two thumbs on the flippers reads as
+   a pinch — which silently zooms the whole page. Kill the gestures outright. */
+["gesturestart","gesturechange","gestureend"].forEach(t=>{
+  document.addEventListener(t,e=>e.preventDefault(),{passive:false});
+});
+document.addEventListener("touchmove",e=>{
+  if(e.touches.length>1)e.preventDefault();          // multi-touch = pinch attempt
+},{passive:false});
+let lastTouchEnd=0;
+document.addEventListener("touchend",e=>{
+  const now=Date.now();
+  if(now-lastTouchEnd<320&&!/INPUT|BUTTON/.test(e.target.tagName))e.preventDefault();
+  lastTouchEnd=now;                                   // double-tap-to-zoom
+},{passive:false});
+document.addEventListener("contextmenu",e=>{
+  if(e.target&&e.target.id==="initInput")return;
+  e.preventDefault();                                 // long-press "Copy / Look Up"
+});
+
 /* touch */
 function bindHold(el,down,up){
   if(!el)return;

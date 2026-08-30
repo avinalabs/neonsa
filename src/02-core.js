@@ -20,10 +20,19 @@ let VW=800,VH=600,DPR=1;
 let renderScale=1;                      // dropped automatically when frames get long
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2)*renderScale;
-  VW=window.innerWidth;VH=window.innerHeight;
+  /* Measure the canvas, not the window. On iOS window.innerHeight reports a
+     height that includes browser chrome and changes while the URL bar
+     animates; the canvas is position:fixed inset:0, so its own box is exactly
+     what the player can see. */
+  const r=cv.getBoundingClientRect();
+  VW=Math.round(r.width)||window.innerWidth||800;
+  VH=Math.round(r.height)||window.innerHeight||600;
   cv.width=Math.max(1,Math.round(VW*DPR));cv.height=Math.max(1,Math.round(VH*DPR));
 }
-resize();addEventListener("resize",resize);
+resize();
+addEventListener("resize",resize);
+addEventListener("orientationchange",()=>setTimeout(resize,120));
+if(window.visualViewport)window.visualViewport.addEventListener("resize",resize);
 
 /* ---------- math ---------- */
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;

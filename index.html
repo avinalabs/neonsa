@@ -17,10 +17,13 @@
   :root{
     --cy:#19e6ff; --mg:#ff2bd6; --yl:#ffe93b; --gr:#39ff6a; --rd:#ff3355; --pu:#b26bff; --or:#ff9a1f;
   }
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{width:100%;height:100%;background:#000;overflow:hidden;
-    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#fff;user-select:none}
-  canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;background:#02010a;touch-action:none}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;overscroll-behavior:none;
+    touch-action:none;
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#fff}
+  canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;background:#02010a;
+    touch-action:none}
   .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;z-index:30;padding:20px;background:rgba(2,2,12,.86);backdrop-filter:blur(7px)}
   .hidden{display:none!important}
@@ -56,14 +59,16 @@
   button.nbtn.sm{padding:10px 22px;font-size:14px;margin-top:0}
   #hudBtns{position:fixed;top:10px;right:12px;z-index:20;display:flex;gap:7px}
   .mini{cursor:pointer;background:rgba(10,10,40,.55);border:1px solid rgba(25,230,255,.45);color:var(--cy);
-    border-radius:8px;padding:6px 11px;font-weight:800;font-size:12px;letter-spacing:1px;font-family:inherit}
+    border-radius:8px;padding:6px 11px;font-weight:800;font-size:12px;letter-spacing:1px;font-family:inherit;
+    touch-action:manipulation;-webkit-touch-callout:none}
   .mini:hover{background:rgba(25,230,255,.18)}
   #touchUI{position:fixed;left:0;right:0;bottom:0;z-index:15;display:none;justify-content:space-between;
     padding:12px;pointer-events:none;touch-action:none}
   @media (pointer:coarse){#touchUI{display:flex}}
   .tbtn{pointer-events:auto;width:76px;height:76px;border-radius:50%;border:2px solid var(--cy);color:var(--cy);
     background:rgba(5,10,35,.5);font-weight:900;font-size:10px;letter-spacing:1px;display:flex;
-    align-items:center;justify-content:center;flex-direction:column;text-align:center}
+    align-items:center;justify-content:center;flex-direction:column;text-align:center;
+    touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .tgrp{display:flex;gap:9px;align-items:flex-end}
   .tbtn.launch{border-color:var(--yl);color:var(--yl);width:88px;height:88px}
   .tbtn.flip{border-color:var(--gr);color:var(--gr);width:92px;height:92px;font-size:12px}
@@ -76,7 +81,8 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px}
   #shareImg{display:block;max-height:42vh;border-radius:12px;box-shadow:0 0 44px rgba(25,230,255,.3);
     border:1px solid rgba(25,230,255,.45);margin:14px auto 0}
-  #initWrap input{font-family:Consolas,monospace;font-weight:900;font-size:44px;letter-spacing:14px;
+  #initWrap input{-webkit-user-select:text;user-select:text;touch-action:manipulation;
+    font-family:Consolas,monospace;font-weight:900;font-size:44px;letter-spacing:14px;
     width:210px;text-align:center;text-transform:uppercase;background:rgba(0,0,0,.5);color:var(--yl);
     border:2px solid var(--cy);border-radius:12px;padding:8px 0 8px 14px;outline:none;
     box-shadow:0 0 24px rgba(25,230,255,.35) inset,0 0 24px rgba(255,233,59,.2)}
@@ -188,7 +194,7 @@
 </div>
 
 <div id="hudBtns" class="hidden">
-  <button class="mini" id="camBtn">&#128444; CAM</button>
+  <button class="mini" id="camBtn">CAM</button>
   <button class="mini" id="muteBtn">&#128266;</button>
   <button class="mini" id="pauseBtn">II</button>
 </div>
@@ -232,10 +238,19 @@ let VW=800,VH=600,DPR=1;
 let renderScale=1;                      // dropped automatically when frames get long
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2)*renderScale;
-  VW=window.innerWidth;VH=window.innerHeight;
+  /* Measure the canvas, not the window. On iOS window.innerHeight reports a
+     height that includes browser chrome and changes while the URL bar
+     animates; the canvas is position:fixed inset:0, so its own box is exactly
+     what the player can see. */
+  const r=cv.getBoundingClientRect();
+  VW=Math.round(r.width)||window.innerWidth||800;
+  VH=Math.round(r.height)||window.innerHeight||600;
   cv.width=Math.max(1,Math.round(VW*DPR));cv.height=Math.max(1,Math.round(VH*DPR));
 }
-resize();addEventListener("resize",resize);
+resize();
+addEventListener("resize",resize);
+addEventListener("orientationchange",()=>setTimeout(resize,120));
+if(window.visualViewport)window.visualViewport.addEventListener("resize",resize);
 
 /* ---------- math ---------- */
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -734,6 +749,7 @@ function focusBall(){
 }
 function updateCamera(dt){
   const aspect=camAspect();
+  const TIGHT=VW<700;                   // phone-shaped: prioritise a steady frame
   const OVER=420;                       // how far past the table edge the camera may look
 
   if(camMode==="overview"){
@@ -761,23 +777,27 @@ function updateCamera(dt){
         const sp=Math.hypot(b.vx,b.vy);
         let tx=b.x+clamp(b.vx*0.12,-300,300);
         let ty=b.y+clamp(b.vy*0.12,-340,340);
-        let tv=clamp(VIEW_MIN+sp*0.15+(b.rail?200:0),VIEW_MIN,1560);
+        let tv=clamp(VIEW_MIN+Math.min(sp*0.12,300)+(b.rail?180:0),VIEW_MIN,1560);
         /* As the ball drops toward the flippers of whatever deck it is on,
            lean the shot into frame so you can aim instead of guessing. */
         const fy=DECK_FLIP_Y[b.deck];
         if(fy&&b.y<fy&&b.vy>-260){
           const t=clamp((b.y-(fy-1150))/1150,0,1);
           ty=lerp(ty,fy-210,t*0.62);
-          tv=Math.max(tv,Math.min(1340,(fy+170-b.y)+430));
+          tv=Math.max(tv,Math.min(TIGHT?1180:1340,(fy+170-b.y)+430));
         }
         cam.tx=tx;cam.ty=ty;cam.tview=tv;
       }
     }
     if(boss.active&&boss.hp>0&&balls.some(b=>b.y<900))cam.tview=Math.max(cam.tview,1120);
   }
-  /* narrow windows and phones must still see a usable slice of the table's width */
-  cam.tview=clamp(Math.max(cam.tview,640/Math.max(aspect,0.01)),
-                  VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
+  /* Narrow windows and phones must still see a usable slice of the table's
+     width — and on a phone the zoom is held inside a narrow band, because a
+     view that swings between extremes reads as the camera misbehaving. */
+  const minW=(TIGHT?820:640)/Math.max(aspect,0.01);
+  cam.tview=Math.max(cam.tview,minW);
+  if(TIGHT&&camMode!=="overview")cam.tview=Math.min(cam.tview,minW*1.22);
+  cam.tview=clamp(cam.tview,VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
 
   const halfV=cam.tview/2, halfH=cam.tview*aspect/2;
   if(halfV*2<PH+OVER)cam.ty=clamp(cam.ty,halfV-OVER,PH-halfV+OVER);else cam.ty=PH/2;
@@ -786,7 +806,9 @@ function updateCamera(dt){
   const k=1-Math.pow(0.0011,dt);
   cam.x=lerp(cam.x,cam.tx,k);
   cam.y=lerp(cam.y,cam.ty,k);
-  cam.view=lerp(cam.view,cam.tview*(1-cam.kick*0.15),1-Math.pow(0.0035,dt));
+  const wantView=cam.tview*(1-cam.kick*0.15);
+  if(Math.abs(wantView-cam.view)>cam.view*0.012)
+    cam.view=lerp(cam.view,wantView,1-Math.pow(TIGHT?0.10:0.03,dt));
   cam.kick*=Math.pow(0.02,dt);
 
   /* Hard guarantee: whatever the smoothing was doing, the ball you are
@@ -3826,6 +3848,25 @@ addEventListener("keyup",e=>{
     if(state==="PLAY"&&ballInPlunger)launchNow(plungerCharge);
     plungerCharge=0;plungerDir=1;
   }
+});
+
+/* iOS Safari ignores user-scalable=no, and two thumbs on the flippers reads as
+   a pinch — which silently zooms the whole page. Kill the gestures outright. */
+["gesturestart","gesturechange","gestureend"].forEach(t=>{
+  document.addEventListener(t,e=>e.preventDefault(),{passive:false});
+});
+document.addEventListener("touchmove",e=>{
+  if(e.touches.length>1)e.preventDefault();          // multi-touch = pinch attempt
+},{passive:false});
+let lastTouchEnd=0;
+document.addEventListener("touchend",e=>{
+  const now=Date.now();
+  if(now-lastTouchEnd<320&&!/INPUT|BUTTON/.test(e.target.tagName))e.preventDefault();
+  lastTouchEnd=now;                                   // double-tap-to-zoom
+},{passive:false});
+document.addEventListener("contextmenu",e=>{
+  if(e.target&&e.target.id==="initInput")return;
+  e.preventDefault();                                 // long-press "Copy / Look Up"
 });
 
 /* touch */
