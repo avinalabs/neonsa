@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+
+      # index.html is generated from src/ — fail if someone edited it directly
+      - name: index.html is in sync with src/
+        run: node build.mjs --check
+
+      - name: Smoke tests
+        run: node test/smoke.mjs
+
+      - name: Soak test
+        run: node test/soak.mjs 3 200
