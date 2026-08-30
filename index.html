@@ -130,12 +130,15 @@
     #overScreen button.nbtn{margin-top:10px}
   }
   /* phone layout — must come last so it wins over the base rules */
-  @media (max-height:520px) and (pointer:coarse){
-    #touchUI{padding:6px 6px}
-    #touchUI .tbtn{width:42px;height:42px;font-size:8px;border-width:2px;line-height:1.1}
-    #touchUI .tbtn.flip{width:56px;height:56px;font-size:10px}
-    #touchUI .tbtn.launch{width:50px;height:50px;font-size:9px}
-    #touchUI .tgrp{gap:5px}
+  /* Landscape phones are short but very wide, so the pads become wide pills:
+     a much larger touch target for the same height cost as a small circle. */
+  @media (max-height:560px) and (pointer:coarse){
+    #touchUI{padding:6px 10px}
+    #touchUI .tbtn{width:78px;height:52px;border-radius:26px;font-size:10px;
+      border-width:2px;line-height:1.15;flex-direction:row;gap:5px}
+    #touchUI .tbtn.flip{width:108px;height:66px;border-radius:33px;font-size:14px;border-width:3px}
+    #touchUI .tbtn.launch{width:88px;height:58px;border-radius:29px;font-size:12px}
+    #touchUI .tgrp{gap:9px}
   }
   @media (max-width:600px){
     #touchUI{padding:9px 6px}
@@ -2609,6 +2612,14 @@ function drawWorld(){
   ctx.fillStyle=g;ctx.fillRect(0,0,VW,VH);
   if(bgPulse>0.02){ctx.fillStyle=`rgba(25,230,255,${bgPulse*0.05})`;ctx.fillRect(0,0,VW,VH);}
 
+  /* Clip the playfield to the play window. The HUD bands are laid out so no
+     panel sits over the flippers; this makes the same promise for the table
+     itself, which otherwise draws on under the touch controls. */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,playTop(),VW,playH());
+  ctx.clip();
+
   setWorldTransform();
 
   /* ---- parallax star grid ---- */
@@ -3120,6 +3131,16 @@ function drawWorld(){
   }
 
   setScreenTransform();
+  ctx.restore();                       // release the play-window clip
+
+  /* edge of the play window, so the controls read as an apron rather than a crop */
+  if(hudBottomH()>24){
+    const by=VH-hudBottomH();
+    const g2=ctx.createLinearGradient(0,by-16,0,by+2);
+    g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.85)");
+    ctx.fillStyle=g2;ctx.fillRect(0,by-16,VW,18);
+    ctx.fillStyle="rgba(25,230,255,0.16)";ctx.fillRect(0,by,VW,1);
+  }
 
   /* ---- full-screen tints ---- */
   if(frenzyT>0){
@@ -3239,7 +3260,7 @@ function actionPanelH(){
   return 28*U;
 }
 function hudTopH(){return topBarH()+hudTopSmooth;}
-function hudBottomH(){return IS_TOUCH?(isShort()?64:(VW<600?92:112)):Math.round(10*uiScale());}
+function hudBottomH(){return IS_TOUCH?(isShort()?84:(VW<600?92:112)):Math.round(10*uiScale());}
 function hudTick(dt){
   const want=actionPanelH();
   hudTopSmooth+=clamp(want-hudTopSmooth,-dt*900,dt*900);

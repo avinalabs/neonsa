@@ -22,7 +22,7 @@ function actionPanelH(){
   return 28*U;
 }
 function hudTopH(){return topBarH()+hudTopSmooth;}
-function hudBottomH(){return IS_TOUCH?(isShort()?64:(VW<600?92:112)):Math.round(10*uiScale());}
+function hudBottomH(){return IS_TOUCH?(isShort()?84:(VW<600?92:112)):Math.round(10*uiScale());}
 function hudTick(dt){
   const want=actionPanelH();
   hudTopSmooth+=clamp(want-hudTopSmooth,-dt*900,dt*900);

@@ -98,6 +98,14 @@ function drawWorld(){
   ctx.fillStyle=g;ctx.fillRect(0,0,VW,VH);
   if(bgPulse>0.02){ctx.fillStyle=`rgba(25,230,255,${bgPulse*0.05})`;ctx.fillRect(0,0,VW,VH);}
 
+  /* Clip the playfield to the play window. The HUD bands are laid out so no
+     panel sits over the flippers; this makes the same promise for the table
+     itself, which otherwise draws on under the touch controls. */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,playTop(),VW,playH());
+  ctx.clip();
+
   setWorldTransform();
 
   /* ---- parallax star grid ---- */
@@ -609,6 +617,16 @@ function drawWorld(){
   }
 
   setScreenTransform();
+  ctx.restore();                       // release the play-window clip
+
+  /* edge of the play window, so the controls read as an apron rather than a crop */
+  if(hudBottomH()>24){
+    const by=VH-hudBottomH();
+    const g2=ctx.createLinearGradient(0,by-16,0,by+2);
+    g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.85)");
+    ctx.fillStyle=g2;ctx.fillRect(0,by-16,VW,18);
+    ctx.fillStyle="rgba(25,230,255,0.16)";ctx.fillRect(0,by,VW,1);
+  }
 
   /* ---- full-screen tints ---- */
   if(frenzyT>0){
