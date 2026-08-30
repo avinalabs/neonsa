@@ -340,6 +340,16 @@ $("shareBtn").addEventListener("click",async()=>{
 /* ---------- boot ---------- */
 setMute(false);
 renderBoard();
+/* Offer the home-screen install only where it actually buys something: an iOS
+   device, in a browser tab rather than an already-installed window. Android
+   and desktop have their own install affordances and do not need the nudge. */
+(function(){
+  const standalone=window.navigator.standalone===true||
+    (window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches);
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||
+    (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  if(IS_TOUCH&&ios&&!standalone)$("a2hs").classList.remove("hidden");
+})();
 $("loadNote").style.display="none";
 $("startScreen").classList.remove("hidden");
 lastT=performance.now();

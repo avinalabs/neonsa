@@ -15,7 +15,9 @@ function topBarH(){const U=uiScale();return isShort()?56*U:(VW<640?92:86)*U;}
 function actionPanelH(){
   const U=uiScale();
   if(state!=="PLAY"&&state!=="BONUS")return 0;
-  if(ballInPlunger)return 78*U;
+  /* the serve panel is the tallest thing the HUD ever shows; on a short screen
+     it drops its title row, because the LAUNCH pad is labelled anyway */
+  if(ballInPlunger)return (isShort()?54:78)*U;
   if(mission.active)return 62*U;
   if(cannon.loaded||bossReady||wizard.active)return 30*U;
   return 28*U;
@@ -31,8 +33,18 @@ function hudTopH(){return topBarH()+hudTopSmooth;}
    Landscape floats every pad, so there the two are the same. */
 function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?92:112)):Math.round(10*uiScale());}
 function clipBotH(){return IS_TOUCH?(isShort()?18:14):Math.round(10*uiScale());}
-/* portrait parks LAUNCH above the right flipper pad; keep the minimap clear of it */
-function launchPadClear(){return IS_TOUCH&&!isShort()?62:0;}
+/* Same trade at the top as at the bottom on a short screen: the table is drawn
+   up behind the instrument bar, which only tints it, while the camera still
+   frames the ball below the bar. */
+function clipTopY(){return IS_TOUCH&&isShort()?Math.round(topBarH()*0.42):playTop();}
+/* Where the floating LAUNCH pad actually is, in canvas pixels. These mirror the
+   CSS in 01-shell.html — the minimap is placed around this box rather than
+   against a guessed clearance, which is what used to put it under the pad. */
+function launchPadBox(){
+  if(!IS_TOUCH)return null;
+  return isShort()?{x:VW-152,y:VH-142,w:88,h:56}
+                  :{x:VW-116,y:VH-134,w:64,h:52};
+}
 function hudTick(dt){
   const want=actionPanelH();
   hudTopSmooth+=clamp(want-hudTopSmooth,-dt*900,dt*900);
@@ -51,9 +63,10 @@ function drawHUD(){
 
   /* ---------- top band ---------- */
   ctx.save();
+  const seeThrough=clipTopY()<playTop();
   const tg=ctx.createLinearGradient(0,0,0,hudTopH()+18*U);
-  tg.addColorStop(0,"rgba(2,4,20,0.94)");
-  tg.addColorStop(0.72,"rgba(2,4,20,0.86)");
+  tg.addColorStop(0,seeThrough?"rgba(2,4,20,0.90)":"rgba(2,4,20,0.94)");
+  tg.addColorStop(0.72,seeThrough?"rgba(2,4,20,0.70)":"rgba(2,4,20,0.86)");
   tg.addColorStop(1,"rgba(2,4,20,0)");
   ctx.fillStyle=tg;ctx.fillRect(0,0,VW,hudTopH()+18*U);
 
@@ -112,16 +125,19 @@ function drawHUD(){
   drawActionPanel(U,narrow,barH);
 
   /* ---------- left instrument column (inside the play window edge) ---------- */
-  const mx=14*U,mw=Math.round((narrow?146:186)*U);
-  let my=hudTopH()+Math.round(20*U);
+  /* a landscape phone has ~260px of play window, so the instrument column
+     packs tighter there rather than running the whole height of the table */
+  const rowH=short?26:34, buffH=short?19:23, maxBuffs=short?3:6;
+  const mx=14*U,mw=Math.round((short?150:narrow?146:186)*U);
+  let my=hudTopH()+Math.round((short?12:20)*U);
   meter(mx,my,mw,9*U,stormMeter,[CY,PU,YL],stormMeter>0.95?"\u26a1 LIGHTNING READY":"STORM METER",stormMeter>0.95);
-  my+=Math.round(34*U);
+  my+=Math.round(rowH*U);
   meter(mx,my,mw,9*U,surgeT>0?(surgeT/14):surge,[GR,GR,"#a8ffce"],
         surgeT>0?"SURGE "+Math.ceil(surgeT)+"s":"SURGE CHARGE",surgeT>0);
-  my+=Math.round(34*U);
+  my+=Math.round(rowH*U);
   if(combo>0){
     meter(mx,my,mw,9*U,clamp(combo/40,0,1),[MG,MG,PU],"COMBO "+combo+"  (x"+comboTier()+")",combo>=16);
-    my+=Math.round(34*U);
+    my+=Math.round(rowH*U);
   }
   ctx.save();
   ctx.textAlign="left";ctx.font=`800 ${Math.round(11*U)}px "Segoe UI"`;
@@ -132,7 +148,7 @@ function drawHUD(){
     ctx.fillStyle=i<magGrabs?PU:"rgba(178,107,255,0.2)";ctx.fill();
   }
   ctx.restore();
-  my+=Math.round(26*U);
+  my+=Math.round((short?20:26)*U);
 
   const buffs=[];
   if(frenzyT>0)buffs.push(["CHAOS x3",MG,frenzyT]);
@@ -147,14 +163,14 @@ function drawHUD(){
   if(ballSaveT>0)buffs.push(["BALL SAVE",GR,ballSaveT]);
   ctx.save();
   ctx.textAlign="left";ctx.font=`900 ${Math.round(12*U)}px "Segoe UI"`;
-  buffs.slice(0,6).forEach((b,i)=>{
-    const yy=my+i*23*U;
+  buffs.slice(0,maxBuffs).forEach((b,i)=>{
+    const yy=my+i*buffH*U;
     ctx.fillStyle="rgba(3,5,22,0.66)";
-    roundRect(mx,yy-12*U,Math.round(146*U),18*U,5*U);ctx.fill();
+    roundRect(mx,yy-12*U,Math.round((short?134:146)*U),(short?16:18)*U,5*U);ctx.fill();
     ctx.fillStyle=b[1];
     ctx.fillText(b[0]+(b[2]>0?"  "+Math.ceil(b[2])+"s":""),mx+7*U,yy+1*U);
   });
-  my+=buffs.slice(0,6).length*23*U+Math.round(14*U);
+  my+=buffs.slice(0,maxBuffs).length*buffH*U+Math.round((short?10:14)*U);
   ctx.restore();
 
   /* ---------- toasts: left column, never over the flippers ---------- */
@@ -228,15 +244,22 @@ function drawActionPanel(U,narrow,barH){
   ctx.beginPath();ctx.rect(0,top-2,VW,h+2);ctx.clip();
 
   if(ballInPlunger&&(state==="PLAY")){
-    const pw=Math.min(Math.round(360*U),VW-20),ph=Math.round(74*U);
+    /* Short screens drop the title row and tighten the spacing: on a landscape
+       phone those 24 pixels are worth more as table than as an instruction the
+       LAUNCH pad already gives you. */
+    const short=isShort();
+    const pw=Math.min(Math.round((short?330:360)*U),VW-20),ph=Math.round((short?50:74)*U);
     const px=VW/2-pw/2,py=top;
+    const yStrip=py+(short?8:24)*U, yDest=py+(short?34:58)*U, yLit=py+(short?45:70)*U;
     ctx.fillStyle="rgba(3,4,22,0.9)";roundRect(px,py,pw,ph,10*U);ctx.fill();
     ctx.strokeStyle=YL;ctx.lineWidth=2;roundRect(px,py,pw,ph,10*U);ctx.stroke();
     ctx.textAlign="center";ctx.fillStyle=YL;
-    ctx.font=`900 ${Math.round((narrow?10:12)*U)}px "Segoe UI"`;
-    ctx.fillText(IS_TOUCH?"HOLD LAUNCH — RELEASE TO PICK A FLOOR":"HOLD SPACE — RELEASE TO PICK A FLOOR",px+pw/2,py+16*U);
+    if(!short){
+      ctx.font=`900 ${Math.round((narrow?10:12)*U)}px "Segoe UI"`;
+      ctx.fillText(IS_TOUCH?"HOLD LAUNCH — RELEASE TO PICK A FLOOR":"HOLD SPACE — RELEASE TO PICK A FLOOR",px+pw/2,py+16*U);
+    }
     const idx=clamp(Math.floor(plungerCharge*4.999),0,4);
-    const bw2=pw-24*U,bx=px+12*U,by=py+24*U;
+    const bw2=pw-24*U,bx=px+12*U,by=yStrip;
     for(let i=0;i<5;i++){
       const seg=bw2/5;
       ctx.fillStyle=i===idx?DECKS[i].col:"rgba(255,255,255,0.09)";
@@ -249,12 +272,12 @@ function drawActionPanel(U,narrow,barH){
       }
     }
     ctx.fillStyle=WH;ctx.fillRect(bx+bw2*plungerCharge-1.5,by-4*U,3,21*U);
-    ctx.font=`900 ${Math.round(15*U)}px "Segoe UI"`;ctx.fillStyle=DECKS[idx].col;
-    ctx.fillText("\u2192 "+DECKS[idx].name+"  (x"+DECKS[idx].mult+")",px+pw/2,py+58*U);
+    ctx.font=`900 ${Math.round((short?13:15)*U)}px "Segoe UI"`;ctx.fillStyle=DECKS[idx].col;
+    ctx.fillText("\u2192 "+DECKS[idx].name+"  (x"+DECKS[idx].mult+")",px+pw/2,yDest);
     if(skillArmed){
-      ctx.font=`900 ${Math.round(10*U)}px "Segoe UI"`;ctx.fillStyle=YL;
+      ctx.font=`900 ${Math.round((short?9:10)*U)}px "Segoe UI"`;ctx.fillStyle=YL;
       ctx.globalAlpha=0.6+0.4*Math.sin(timeSec*7);
-      ctx.fillText("\u2605 SKILL SHOT LIT: "+DECKS[skillDeck].name,px+pw/2,py+70*U);
+      ctx.fillText("\u2605 SKILL SHOT LIT: "+DECKS[skillDeck].name,px+pw/2,yLit);
       ctx.globalAlpha=1;
     }
   }else if(mission.active){
@@ -328,10 +351,20 @@ function meter(x,y,w,h,v,cols,label,hot){
 let minimapAlpha=1;
 function drawMinimap(U){
   const short=isShort();
-  const h=clamp(Math.min(VH*(short?0.36:0.30),VW*0.34),104,270), w=h*PW/PH;
+  /* The minimap lives in the right margin, and the floating LAUNCH pad is also
+     in the right margin, so it is sized against the pad's real rect: it fills
+     the space between the top of the play window and the top of the pad, and
+     never more. Guessing a clearance is what used to leave it half-buried under
+     LAUNCH on a short screen. */
+  const pad=launchPadBox();
+  const top=(short?playTop():hudTopH())+10*U;
+  const floor=pad?pad.y-10*U:VH-hudBottomH()-10*U;
+  let h=clamp(Math.min(VH*(short?0.36:0.30),VW*0.34),104,270);
+  if(pad)h=Math.min(h,Math.max(64,floor-top));
+  const w=h*PW/PH;
   const x=VW-w-10*U;
-  /* in landscape the bottom-right corner belongs to the flipper pad */
-  const y=short?(playTop()+playH()*0.33-h/2):(VH-hudBottomH()-h-10*U-launchPadClear());
+  const y=short?clamp(playTop()+playH()*0.33-h/2,top,Math.max(top,floor-h))
+               :Math.max(top,floor-h);
   const sx=w/PW, sy=h/PH;
   const fb=focusBall();
   let dim=1;

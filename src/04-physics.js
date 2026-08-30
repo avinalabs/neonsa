@@ -11,7 +11,7 @@ const VIEW_MIN=760,VIEW_MAX=2300;
 function playTop(){return hudTopH();}
 function playH(){return Math.max(160,VH-playTop()-hudBottomH());}
 /* the visible slice of table — larger than the framing box on phones, see p8 */
-function clipTop(){return playTop();}
+function clipTop(){return clipTopY();}
 function clipH(){return Math.max(160,VH-clipTop()-clipBotH());}
 function camScale(){return playH()/cam.view;}
 function camAspect(){return VW/Math.max(playH(),1);}
@@ -89,14 +89,16 @@ function updateCamera(dt){
   const minW=(TIGHT?1040:640)/Math.max(aspect,0.01);
   cam.tview=Math.max(cam.tview,minW);
   if(TIGHT&&camMode!=="overview")cam.tview=Math.min(cam.tview,minW*1.22);
-  /* A short window is height-starved, so spend the pixels on showing more of
-     the tower rather than magnifying it: hold the on-screen scale steady and
-     let the view grow with the play window. */
-  if(SHORT&&camMode!=="overview"){
-    const steady=playH()*2.95;
-    cam.tview=clamp(cam.tview,steady,steady*1.3);
-  }
-  cam.tview=clamp(cam.tview,VIEW_MIN,camMode==="overview"?99999:VIEW_MAX);
+  /* A landscape phone is a 4:1 letterbox. cam.tview is a world HEIGHT, so a
+     value that looks reasonable there — VIEW_MIN, say — spreads across four
+     times the table's width, and the machine ends up a thin ribbon floating in
+     the middle of the screen with a ten-pixel ball. On a short window frame by
+     WIDTH instead: fit the table across the screen and take whatever vertical
+     slice that gives. Nothing is gained by looking past the side walls. */
+  const fitW=(PW+150)/Math.max(aspect,0.01);
+  if(SHORT&&camMode!=="overview")cam.tview=clamp(cam.tview,fitW*0.92,fitW*1.06);
+  /* the zoom-in floor has to give way to that, or it puts the margin straight back */
+  cam.tview=clamp(cam.tview,Math.min(VIEW_MIN,fitW*0.94),camMode==="overview"?99999:VIEW_MAX);
 
   const halfV=cam.tview/2, halfH=cam.tview*aspect/2;
   if(halfV*2<PH+OVER)cam.ty=clamp(cam.ty,halfV-OVER,PH-halfV+OVER);else cam.ty=PH/2;
@@ -120,11 +122,16 @@ function updateCamera(dt){
       const sy=(f.y-cam.y)*s+vpT+vpH/2;
       /* On a short screen the pads float over the corners instead of sitting in
          a reserved band, so the margins here are what keeps the ball out from
-         under a button: wide enough to clear LAUNCH on the right, tall enough
-         to clear the flipper pads along the bottom. */
-      const mx=Math.max(48,VW*(SHORT?0.21:0.17)), my=Math.max(SHORT?72:48,vpH*0.17);
-      if(sx<mx)cam.x+=(sx-mx)/s;
-      else if(sx>VW-mx)cam.x+=(sx-(VW-mx))/s;
+         under a button: wide enough on the RIGHT to clear LAUNCH, tall enough
+         to clear the flipper pads along the bottom. The left margin can be much
+         smaller — nothing floats there above the pad row — and keeping it small
+         matters, because once the whole table fits across the screen a fat
+         margin makes the camera pan for no reason. */
+      const mxl=Math.max(48,VW*(SHORT?0.08:0.17));
+      const mxr=Math.max(48,VW*(SHORT?0.21:0.17));
+      const my=Math.max(SHORT?72:48,vpH*0.17);
+      if(sx<mxl)cam.x+=(sx-mxl)/s;
+      else if(sx>VW-mxr)cam.x+=(sx-(VW-mxr))/s;
       if(sy<vpT+my)cam.y+=(sy-(vpT+my))/s;
       else if(sy>vpT+vpH-my)cam.y+=(sy-(vpT+vpH-my))/s;
     }

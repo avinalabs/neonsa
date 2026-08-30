@@ -123,7 +123,7 @@ node build.mjs --check # fail if index.html is stale (CI runs this)
 ```bash
 npm install
 npx playwright install chromium
-npm test               # smoke: 6 viewports, pads vs ball, game-over flow, multi-touch
+npm test               # smoke: 7 viewports, pads vs ball, game-over flow, multi-touch
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
 ```
@@ -154,11 +154,26 @@ Every one of these caused a real ball trap, and they are all easy to reintroduce
 - **Canvas interpolates gradient stops un-premultiplied** — a bright low-alpha stop beside
   a dark high-alpha one renders as a bright band, not a subtle tint.
 
+**A landscape phone is a 4:1 letterbox, and `cam.tview` is a world *height*.** A value that
+looks sane as a height — `VIEW_MIN`, say — spreads across four times the table's width
+there, so the machine used to sit in the middle of the screen as a thin ribbon with a
+ten-pixel ball and black either side. Short windows therefore frame by **width**: fit the
+1,760-unit table across the screen and take whatever vertical slice falls out. Nothing is
+gained by looking past the side walls. On an iPhone 16 Pro Max in Safari landscape that
+took the table from 52% of the screen width to 88%, and the ball from 11px to 19px.
+`test/smoke.mjs` asserts the table fills at least 72% of the width on every touch viewport.
+
+In landscape, Safari's own address and tab bars take about a quarter of the height. The
+game carries the iOS web-app meta tags, and the start screen tells iOS players in a browser
+tab that **Share → Add to Home Screen** gets that quarter back — the one thing no amount of
+layout work can do for them.
+
 On phones the table is deliberately drawn **lower than the camera will ever frame the
 ball**. `hudBottomH()` is the framing band — the camera never lets the ball or the flippers
 fall below it — while `clipBotH()` is the drawing band, which runs almost to the bottom
 edge. The machine therefore continues underneath the floating pads, so you see more of it,
-while the shot you are actually taking stays above them. `test/smoke.mjs` plays 60
+while the shot you are actually taking stays above them. On a short screen the same applies
+at the top: the table runs up behind the instrument bar, which only tints it. `test/smoke.mjs` plays 60
 simulated seconds on each touch viewport and fails if the ball's on-screen circle ever
 intersects a pad.
 

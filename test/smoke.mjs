@@ -1,5 +1,5 @@
 /**
- * Loads the game at six screen shapes and checks that it starts cleanly and
+ * Loads the game at seven screen shapes and checks that it starts cleanly and
  * keeps the ball inside the play window — the band between the top instrument
  * HUD and the bottom control HUD. A ball drawn outside it is a ball the player
  * cannot see, which is the bug class this test exists to catch.
@@ -20,6 +20,10 @@ const VIEWPORTS = [
   { name: "narrow", width: 478, height: 909 },
   { name: "phone", width: 390, height: 844, touch: true },
   { name: "phone-landscape", width: 844, height: 390, touch: true },
+  /* iPhone 16 Pro Max in Safari landscape: the browser's own bars take about a
+     quarter of the 440pt height, which is the shape that exposed the camera
+     framing the table as a thin ribbon in the middle of the screen. */
+  { name: "phone-landscape-safari", width: 956, height: 342, touch: true },
   { name: "phone-small", width: 360, height: 640, touch: true },
 ];
 
@@ -67,6 +71,16 @@ for (const vp of VIEWPORTS) {
       `${vp.name}: table drawn at least as low as it is framed`,
       play.layout.clipH >= play.layout.h,
       `clip=${play.layout.clipH} frame=${play.layout.h}`,
+    );
+    /* An extreme aspect ratio must not leave the machine floating in the middle
+       of the screen with black either side — that reads as "I can't see the
+       game" long before anything is technically wrong. */
+    const fill = Math.min(1, 1760 / play.layout.seenW);
+    check(
+      results,
+      `${vp.name}: the table fills the screen rather than a slot in it`,
+      fill >= 0.72,
+      `${Math.round(fill * 100)}% of the width, ball ${play.layout.ballPx}px`,
     );
     /* The pads overlap the table on purpose — what must never happen is a pad
        overlapping the BALL. Play for a while and watch every frame for it. */
