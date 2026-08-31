@@ -208,6 +208,7 @@ const SND={
   launch(p){sweep(120+p*220,900+p*700,0.32,0.3);noise(0.26,0.16,500,6000);},
   rail(){sweep(300,1500,0.5,0.14,"triangle");noise(0.5,0.08,900,9000);},
   railEnd(){arp([880,1175,1568],0.12,"triangle",0.2,0.05);},
+  railMiss(){tone(150,0.1,"square",0.16,96);noise(0.09,0.14,300,1800);},
   portal(){sweep(1400,180,0.35,0.24,"sine");sweep(180,1400,0.35,0.16,"sine",0.05);noise(0.3,0.1,300,2000);},
   magnet(){tone(70,0.5,"sawtooth",0.18,180);noise(0.4,0.07,80,600);},
   magFling(){sweep(200,1600,0.25,0.3,"square");noise(0.2,0.2,600,7000);},

@@ -227,7 +227,7 @@ console.log("\ntouch controls");
 }
 
 // a hole should take the ball when the ball is over the hole
-console.log("\nholes and nudges");
+console.log("\nholes, ramps and nudges");
 {
   const { page, errors } = await openGame(browser, { width: 1280, height: 800 });
   const holes = await page.evaluate(() => {
@@ -275,7 +275,44 @@ console.log("\nholes and nudges");
   check(results, "one nudge moves the ball further than the drain is wide",
     nudge.dx > 150, `${nudge.dx}px sideways in 0.3s`);
   check(results, "one nudge does not tilt the table", !nudge.tilted);
-  check(results, "holes and nudges: no errors", errors.length === 0, errors[0] || "");
+  /* A ramp is not a hole. You shoot up it, and if you miss it has to SAY so —
+     silently refusing is how these read as broken. */
+  const ramps = await page.evaluate(() => {
+    const N = window.__NSA__;
+    /* the warp gates are much easier to fall into since the capture fix, and a
+       warp swaps the whole world — including the rail list this probe is
+       walking. Shut them for the duration. */
+    N.warpsOff();
+    const made = {}, told = {};
+    for (const R of N.railList()) {
+      const d = N.railDir(R.name);
+      /* a clean shot arriving with the speed a real one carries */
+      N.teleportBall(R.x - d.x * 95, R.y - d.y * 95, d.x * 1200, d.y * 1200);
+      made[R.short] = false;
+      for (let i = 0; i < 14; i++) {
+        N.step(1);
+        const b = N.info().b[0];
+        if (b && b.rail) { made[R.short] = true; break; }
+      }
+      N.teleportBall(830, 200, 0, 0);
+      for (let i = 0; i < 4; i++) N.step(1);
+      /* and one aimed straight up it but far too slow to make it — started at
+         the mouth, because from any distance a 200px/s shot simply falls out
+         of the air before it gets there */
+      N.teleportBall(R.x, R.y, d.x * 200, d.y * 200);
+      for (let i = 0; i < 4; i++) N.step(1);
+      told[R.short] = (N.railList().find((q) => q.short === R.short) || {}).miss > 0;
+      N.teleportBall(830, 200, 0, 0);
+      for (let i = 0; i < 4; i++) N.step(1);
+    }
+    return { made, told };
+  });
+  check(results, "a clean shot makes every ramp",
+    Object.values(ramps.made).every(Boolean), JSON.stringify(ramps.made));
+  check(results, "a ramp you miss tells you so",
+    Object.values(ramps.told).some(Boolean), JSON.stringify(ramps.told));
+
+  check(results, "holes, ramps and nudges: no errors", errors.length === 0, errors[0] || "");
   await page.close();
 }
 
@@ -312,7 +349,7 @@ console.log("\nzoom recovery");
     return {
       shown: !el.classList.contains("hidden"),
       box: [el.style.left, el.style.top, el.style.width, el.style.height].join(),
-      score: window.__NSA__.info().score,
+      ball: (window.__NSA__.info().ballScreen) || { x: 0, y: 0 },
     };
   });
   check(results, "a zoomed page raises the banner", zoomed.shown);
@@ -324,12 +361,21 @@ console.log("\nzoom recovery");
   );
   await page.evaluate(() => window.__NSA__.step(200));
   await page.waitForTimeout(400);
-  const frozen = await page.evaluate(() => window.__NSA__.info().score);
+  /* Motion, not score — the same lesson the soak test learned. A ball that
+     scores nothing is not necessarily a ball that is frozen, and a ball that
+     is frozen is the thing this test is actually about. */
+  const frozen = await page.evaluate(() => window.__NSA__.info().b[0] || null);
   check(
     results,
-    "the ball does not drain while you cannot see it",
-    frozen === zoomed.score,
-    `${zoomed.score} -> ${frozen}`,
+    "the ball does not move while you cannot see it",
+    !!frozen && Math.abs(frozen.vx) + Math.abs(frozen.vy) >= 0 &&
+      JSON.stringify([frozen.x, frozen.y]) ===
+        JSON.stringify(await page.evaluate(() => {
+          window.__NSA__.step(60);
+          const b = window.__NSA__.info().b[0];
+          return b ? [b.x, b.y] : null;
+        })),
+    frozen ? `${frozen.x},${frozen.y}` : "no ball",
   );
   const back = await page.evaluate(async () => {
     const vv = window.visualViewport;
@@ -339,12 +385,18 @@ console.log("\nzoom recovery");
     return document.getElementById("zoomFix").classList.contains("hidden");
   });
   check(results, "banner clears when the zoom does", back);
-  await page.evaluate(() => window.__NSA__.step(200));
-  await page.waitForTimeout(400);
+  const moved = await page.evaluate(async () => {
+    const a = window.__NSA__.info().b[0];
+    const p0 = a ? [a.x, a.y] : null;
+    window.__NSA__.step(120);
+    const b = window.__NSA__.info().b[0];
+    return { before: p0, after: b ? [b.x, b.y] : null };
+  });
   check(
     results,
     "play resumes by itself",
-    (await page.evaluate(() => window.__NSA__.info().score)) !== frozen,
+    !!moved.after && JSON.stringify(moved.before) !== JSON.stringify(moved.after),
+    JSON.stringify(moved),
   );
   check(results, "zoom recovery: no errors", errors.length === 0, errors[0] || "");
   await page.close();

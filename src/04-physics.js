@@ -539,9 +539,16 @@ function sensors(b,dt){
         const p0=R.pts[0],p1=R.pts[1];
         const tx=(p1[0]-p0[0]),ty=(p1[1]-p0[1]),tl=Math.hypot(tx,ty);
         const dot=(b.vx*tx+b.vy*ty)/(tl*Math.max(sp,1));
-        if(sp>=R.minSpd&&dot>0.15){
-          b.rail=R;b.railD=0;b.railSpd=Math.max(sp*0.98,R.minSpd*1.1);
+        if(sp>=R.minSpd&&dot>0.06){
+          b.rail=R;b.railD=0;b.railSpd=Math.max(sp*0.98,R.minSpd*1.35);
           onRailEnter(b,R);
+        }else if(dot>0.3||(sp>=R.minSpd&&dot>-0.05)){
+          /* You aimed at it and it did not take you. Say so — a ramp that
+             refuses in silence is indistinguishable from a broken one, which
+             is exactly how these read before. Only speak when the shot was
+             plausibly meant for the ramp; a ball merely rolling past says
+             nothing, or every ramp becomes a nag. */
+          onRailReject(b,R,sp,dot);
         }
       }
     }

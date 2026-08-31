@@ -180,17 +180,21 @@ function makeRail(o){
   }
   rails.push(Object.assign({pts,seg,cum,total,fx:0,hits:0},o));
 }
+/* minSpd is checked at the MOUTH, and a ramp climbs — a shot fired at 900 has
+   spent a third of itself on the way up and arrives at 600. These bars are set
+   for what the ball is still carrying when it gets there, not what it left the
+   flipper with. Mouths are 52 across, not 46, for the same reason. */
 makeRail({name:"SKY RAMP",short:"SKY",col:CY,
-  mouth:{x:1450,y:2172,r:46},minSpd:820,exitBoost:0.9,
+  mouth:{x:1450,y:2172,r:52},minSpd:540,exitBoost:0.9,
   pts:[[1450,2172],[1540,2032],[1548,1884],[1470,1772],[1330,1712]]});
 makeRail({name:"FOUNDRY LIFT",short:"LIFT",col:OR,
-  mouth:{x:684,y:1442,r:46},minSpd:780,exitBoost:0.9,
+  mouth:{x:684,y:1442,r:52},minSpd:520,exitBoost:0.9,
   pts:[[684,1442],[500,1392],[350,1272],[310,1122],[392,1012],[534,972]]});
 makeRail({name:"GRAND ORBIT",short:"ORBIT",col:PU,
-  mouth:{x:1500,y:1116,r:46},minSpd:900,exitBoost:1.0,
+  mouth:{x:1500,y:1116,r:52},minSpd:600,exitBoost:1.0,
   pts:[[1500,1116],[1566,952],[1550,700],[1436,392],[1160,176],[830,116],[506,176],[236,392],[178,650],[300,790]]});
 makeRail({name:"THE PLUNGE",short:"PLUNGE",col:RD,
-  mouth:{x:1470,y:242,r:46},minSpd:520,exitBoost:1.25,
+  mouth:{x:1470,y:242,r:52},minSpd:360,exitBoost:1.25,
   pts:[[1470,242],[1532,520],[1520,900],[1380,1400],[1120,1820],[930,2050]]});
 
 /* ---------- LAUNCH LANE (a rail with selectable exits) ---------- */

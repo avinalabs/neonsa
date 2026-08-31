@@ -283,22 +283,41 @@ function drawWorld(){
       ctx.strokeStyle=R.col;ctx.lineWidth=2.4;
       ctx.stroke(path);ctx.restore();
     }
-    // mouth
+    /* The mouth used to be a rotating dashed circle — pixel for pixel the same
+       thing a scoop draws. So a ramp read as a hole, and players stood on it
+       waiting for something to happen instead of shooting up it. It is now a
+       funnel with chevrons running up the ramp: the shape tells you it is a
+       way through, and the chevrons tell you which way to hit it. */
     const m=R.mouth;
     if(vis(m.x,m.y,200)){
+      const p0=R.pts[0],p1=R.pts[1];
+      const ang=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);
+      const miss=R.miss||0;
+      const col=miss>0.02?"#93a8c8":R.col;
       ctx.save();
-      ctx.translate(m.x,m.y);ctx.rotate(timeSec*1.6);
-      ctx.strokeStyle=R.col;ctx.lineWidth=5;
-      ctx.setLineDash([12,10]);
-      ctx.globalAlpha=0.25;ctx.lineWidth=13;
-      ctx.beginPath();ctx.arc(0,0,m.r,0,7);ctx.stroke();
-      ctx.globalAlpha=1;ctx.lineWidth=5;
-      ctx.beginPath();ctx.arc(0,0,m.r,0,7);ctx.stroke();
+      ctx.translate(m.x,m.y);ctx.rotate(ang);
+      ctx.lineCap="round";ctx.lineJoin="round";
+      /* the funnel walls, opening toward the shot */
+      glowStroke(()=>{
+        ctx.beginPath();
+        ctx.moveTo(-m.r*0.75,-m.r*1.12);ctx.lineTo(m.r*0.72,-m.r*0.42);
+        ctx.moveTo(-m.r*0.75, m.r*1.12);ctx.lineTo(m.r*0.72, m.r*0.42);
+      },col,5,lit?22:12);
+      /* chevrons, flowing the way the ball has to go */
+      for(let i=0;i<3;i++){
+        const t=((timeSec*1.35+i/3)%1);
+        const x=-m.r*0.62+t*m.r*1.45;
+        ctx.globalAlpha=(1-Math.abs(t-0.5)*1.8)*(lit?1:0.72);
+        ctx.strokeStyle=col;ctx.lineWidth=4.5;
+        ctx.beginPath();
+        ctx.moveTo(x-11,-m.r*0.5);ctx.lineTo(x+11,0);ctx.lineTo(x-11,m.r*0.5);
+        ctx.stroke();
+      }
       ctx.restore();
       ctx.save();
-      ctx.fillStyle=R.col;ctx.font="900 22px 'Segoe UI'";ctx.textAlign="center";
+      ctx.fillStyle=col;ctx.font="900 22px 'Segoe UI'";ctx.textAlign="center";
       ctx.globalAlpha=0.85;
-      ctx.fillText(R.short,m.x,m.y+m.r+30);
+      ctx.fillText(R.short,m.x,m.y+m.r+34);
       ctx.restore();
     }
   });

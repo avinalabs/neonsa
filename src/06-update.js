@@ -76,6 +76,7 @@ function update(dt){
   if(brickResetT>0){brickResetT-=dt;if(brickResetT<=0){bricks.forEach(b=>b.alive=true);announce("WALL REBUILT",OR,false);}}
   for(const p of portals)if(p.cool>0)p.cool-=dt;
   for(const s of scoops)if(s.cool>0)s.cool-=dt;
+  for(const r of rails)if(r.miss>0)r.miss=Math.max(0,r.miss-dt*2.2);
 
   /* spinners */
   for(const s of spinners){
@@ -126,7 +127,6 @@ function update(dt){
     if(b.phase>0)b.phase-=dt;
     if(b.heavy>0)b.heavy-=dt;
   }
-  }   /* end of the paused gate */
 
   /* mission entities: meteors */
   for(let i=meteors.length-1;i>=0;i--){
@@ -284,6 +284,8 @@ function update(dt){
     if(announceCur.t>(announceCur.big?1.7:1.15))announceCur=null;
   }
   if(!announceCur&&announceQ.length)announceCur=announceQ.shift();
+
+  }   /* end of the paused gate — everything above advances play */
 
   musicTick(dt);
 

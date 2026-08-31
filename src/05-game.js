@@ -239,6 +239,15 @@ function onRailEnter(b,R){
   sw("rail",R.mouth.x,R.mouth.y,b);
   if(stats.rails===10)unlock("railrider","RAIL RIDER","Rode 10 habitrails in one game");
 }
+/* the rattle of a ramp you did not make */
+function onRailReject(b,R,sp,dot){
+  if(timeSec-(R.rejT||-9)<0.75)return;      // once per approach, not per substep
+  R.rejT=timeSec;R.miss=1;
+  SND.railMiss();
+  const why=sp<R.minSpd?"TOO SLOW":"WRONG ANGLE";
+  floatText(R.mouth.x,R.mouth.y-R.mouth.r-14,why,"#93a8c8",21);
+  spark(R.mouth.x,R.mouth.y,6,"#93a8c8",180);
+}
 function onRailExit(b,R){
   SND.railEnd();
   spark(b.x,b.y,18,R.col,420);

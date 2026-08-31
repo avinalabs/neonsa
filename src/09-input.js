@@ -435,7 +435,12 @@ window.__NSA__={
   get deckOf(){return b=>b.deck;},
   start(){newGame();},
   launch(p){launchNow(p===undefined?0.9:p);},
-  teleportBall(x,y,vx,vy){if(balls[0]){balls[0].x=x;balls[0].y=y;balls[0].vx=vx||0;balls[0].vy=vy||0;balls[0].inLane=false;balls[0].launchT=-1;ballInPlunger=false;}},
+  teleportBall(x,y,vx,vy){const b=balls[0];if(!b)return false;
+    /* a real reset: a ball still attached to a rail or a scoop ignores the
+       position you just gave it, which made ramp probes read as flaky */
+    b.x=x;b.y=y;b.vx=vx||0;b.vy=vy||0;
+    b.inLane=false;b.launchT=-1;b.rail=null;b.railSpd=0;b.scoop=null;b.hold=undefined;
+    b.magnet=null;b.trail.length=0;ballInPlunger=false;return true;},
   step(n){for(let i=0;i<(n||60);i++){update(1/60);}},
   info(){return{state,score,ballNum,balls:balls.length,peakDeck,missions:stats.missions,
     inLane:ballInPlunger,saves:stats.saves,
@@ -464,9 +469,15 @@ window.__NSA__={
     balls:balls.length,walls:walls.length,bumpers:bumpers.length,
     flippers:flippers.length}:null;},
   gates(){return Object.assign({},gateCool);},
+  warpsOff(){for(const k in gateCool)gateCool[k]=1e6;},
   scoopList(){return scoops.map(s=>({name:s.name,x:s.x,y:s.y,r:s.r,cool:+s.cool.toFixed(2),
     kind:s.kind,lit:!!s.lit}));},
   nudge(dir){doNudge(dir<0?-470:dir>0?470:0,dir===0?-560:-190);},
+  railDir(name){const R=rails.find(r=>r.name===name);
+    const a=R.pts[0],b2=R.pts[1],l=Math.hypot(b2[0]-a[0],b2[1]-a[1]);
+    return{x:(b2[0]-a[0])/l,y:(b2[1]-a[1])/l};},
+  railList(){return rails.map(r=>({name:r.name,short:r.short,x:r.mouth.x,y:r.mouth.y,
+    r:r.mouth.r,minSpd:r.minSpd,hits:r.hits,miss:+(r.miss||0).toFixed(2)}));},
   warping(){return warpT>0;},
   forceBoss(){missionsDone=4;bossReady=true;startBoss();},
   forceWizard(){startWizard();},

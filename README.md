@@ -182,10 +182,23 @@ Every one of these caused a real ball trap, and they are all easy to reintroduce
   kick *plus* a shove that keeps acting for a fifth of a second, which is what makes it feel
   like the table moved rather than the ball teleporting: 193px, and still three nudges to a
   tilt.
+- **A ramp must not look like a hole.** The rail mouths were rotating dashed circles —
+  pixel for pixel what a scoop draws — so players stood on them waiting for something to
+  happen instead of shooting up them. They are now funnels with chevrons running up the
+  ramp: the shape says "way through", the chevrons say "this direction".
+- **`minSpd` is checked at the mouth, and a ramp climbs.** A shot fired at 900px/s arrives
+  at 600 after 95px of climbing, so the bars were rejecting clean shots: probed straight up
+  each ramp, SKY and LIFT only took the fastest shots and GRAND ORBIT took nothing at all,
+  at any speed. Bars are now set for what the ball is still carrying when it gets there.
+- **A ramp that refuses in silence is indistinguishable from a broken one.** A rejected
+  entry now rattles: a clunk, a grey flash of the mouth, and "TOO SLOW" or "WRONG ANGLE".
+  It only speaks when the shot was plausibly meant for the ramp — a ball merely rolling
+  past says nothing, or every ramp becomes a nag.
 - **Pause has to stop the game, not just the physics.** Scoop hold timers, mission clocks
   and ball save all ran through a pause, so a scoop could resolve and pay while the game was
   frozen. Widening the hole capture made it happen often enough for the zoom-recovery test
-  to catch it.
+  to catch it. The gate now covers every entity that advances play, and the pause tests
+  assert **motion, not score** — the same lesson the soak test learned, in reverse.
 - **Canvas interpolates gradient stops un-premultiplied** — a bright low-alpha stop beside
   a dark high-alpha one renders as a bright band, not a subtle tint.
 

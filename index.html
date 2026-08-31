@@ -244,9 +244,12 @@
       </div>
       <div class="col">
         <h3>CLIMB</h3>
-        <b>RAILS</b> fling you up a floor &#183; <b>PORTALS</b> jump you
-        across &#183; <b>MAGNETS</b> grab and launch &#183; <b>CANNON</b>
-        aims itself at the Crown.<br>
+        <b>RAMPS</b> fling you up a floor &mdash; <em>shoot up the chevrons</em>,
+        they are not holes, and a slow or side-on shot rattles back at you
+        &#183; <b>PORTALS</b> jump you across &#183; <b>MAGNETS</b> grab and
+        launch &#183; <b>CANNON</b> aims itself at the Crown &#183;
+        <b>MYSTERY</b> pays a random award &mdash; points, multiball, an extra
+        ball, a power orb, a multiplier.<br>
         <em>MISSIONS</em> at the Spine scoop. Four of them lights
         <u>THE STORM KING</u>. Beat him for <em>ASCENSION</em>.
       </div>
@@ -548,6 +551,7 @@ const SND={
   launch(p){sweep(120+p*220,900+p*700,0.32,0.3);noise(0.26,0.16,500,6000);},
   rail(){sweep(300,1500,0.5,0.14,"triangle");noise(0.5,0.08,900,9000);},
   railEnd(){arp([880,1175,1568],0.12,"triangle",0.2,0.05);},
+  railMiss(){tone(150,0.1,"square",0.16,96);noise(0.09,0.14,300,1800);},
   portal(){sweep(1400,180,0.35,0.24,"sine");sweep(180,1400,0.35,0.16,"sine",0.05);noise(0.3,0.1,300,2000);},
   magnet(){tone(70,0.5,"sawtooth",0.18,180);noise(0.4,0.07,80,600);},
   magFling(){sweep(200,1600,0.25,0.3,"square");noise(0.2,0.2,600,7000);},
@@ -818,17 +822,21 @@ function makeRail(o){
   }
   rails.push(Object.assign({pts,seg,cum,total,fx:0,hits:0},o));
 }
+/* minSpd is checked at the MOUTH, and a ramp climbs — a shot fired at 900 has
+   spent a third of itself on the way up and arrives at 600. These bars are set
+   for what the ball is still carrying when it gets there, not what it left the
+   flipper with. Mouths are 52 across, not 46, for the same reason. */
 makeRail({name:"SKY RAMP",short:"SKY",col:CY,
-  mouth:{x:1450,y:2172,r:46},minSpd:820,exitBoost:0.9,
+  mouth:{x:1450,y:2172,r:52},minSpd:540,exitBoost:0.9,
   pts:[[1450,2172],[1540,2032],[1548,1884],[1470,1772],[1330,1712]]});
 makeRail({name:"FOUNDRY LIFT",short:"LIFT",col:OR,
-  mouth:{x:684,y:1442,r:46},minSpd:780,exitBoost:0.9,
+  mouth:{x:684,y:1442,r:52},minSpd:520,exitBoost:0.9,
   pts:[[684,1442],[500,1392],[350,1272],[310,1122],[392,1012],[534,972]]});
 makeRail({name:"GRAND ORBIT",short:"ORBIT",col:PU,
-  mouth:{x:1500,y:1116,r:46},minSpd:900,exitBoost:1.0,
+  mouth:{x:1500,y:1116,r:52},minSpd:600,exitBoost:1.0,
   pts:[[1500,1116],[1566,952],[1550,700],[1436,392],[1160,176],[830,116],[506,176],[236,392],[178,650],[300,790]]});
 makeRail({name:"THE PLUNGE",short:"PLUNGE",col:RD,
-  mouth:{x:1470,y:242,r:46},minSpd:520,exitBoost:1.25,
+  mouth:{x:1470,y:242,r:52},minSpd:360,exitBoost:1.25,
   pts:[[1470,242],[1532,520],[1520,900],[1380,1400],[1120,1820],[930,2050]]});
 
 /* ---------- LAUNCH LANE (a rail with selectable exits) ---------- */
@@ -1894,9 +1902,16 @@ function sensors(b,dt){
         const p0=R.pts[0],p1=R.pts[1];
         const tx=(p1[0]-p0[0]),ty=(p1[1]-p0[1]),tl=Math.hypot(tx,ty);
         const dot=(b.vx*tx+b.vy*ty)/(tl*Math.max(sp,1));
-        if(sp>=R.minSpd&&dot>0.15){
-          b.rail=R;b.railD=0;b.railSpd=Math.max(sp*0.98,R.minSpd*1.1);
+        if(sp>=R.minSpd&&dot>0.06){
+          b.rail=R;b.railD=0;b.railSpd=Math.max(sp*0.98,R.minSpd*1.35);
           onRailEnter(b,R);
+        }else if(dot>0.3||(sp>=R.minSpd&&dot>-0.05)){
+          /* You aimed at it and it did not take you. Say so — a ramp that
+             refuses in silence is indistinguishable from a broken one, which
+             is exactly how these read before. Only speak when the shot was
+             plausibly meant for the ramp; a ball merely rolling past says
+             nothing, or every ramp becomes a nag. */
+          onRailReject(b,R,sp,dot);
         }
       }
     }
@@ -2185,6 +2200,15 @@ function onRailEnter(b,R){
   camPunch(.35);
   sw("rail",R.mouth.x,R.mouth.y,b);
   if(stats.rails===10)unlock("railrider","RAIL RIDER","Rode 10 habitrails in one game");
+}
+/* the rattle of a ramp you did not make */
+function onRailReject(b,R,sp,dot){
+  if(timeSec-(R.rejT||-9)<0.75)return;      // once per approach, not per substep
+  R.rejT=timeSec;R.miss=1;
+  SND.railMiss();
+  const why=sp<R.minSpd?"TOO SLOW":"WRONG ANGLE";
+  floatText(R.mouth.x,R.mouth.y-R.mouth.r-14,why,"#93a8c8",21);
+  spark(R.mouth.x,R.mouth.y,6,"#93a8c8",180);
 }
 function onRailExit(b,R){
   SND.railEnd();
@@ -2991,6 +3015,7 @@ function update(dt){
   if(brickResetT>0){brickResetT-=dt;if(brickResetT<=0){bricks.forEach(b=>b.alive=true);announce("WALL REBUILT",OR,false);}}
   for(const p of portals)if(p.cool>0)p.cool-=dt;
   for(const s of scoops)if(s.cool>0)s.cool-=dt;
+  for(const r of rails)if(r.miss>0)r.miss=Math.max(0,r.miss-dt*2.2);
 
   /* spinners */
   for(const s of spinners){
@@ -3041,7 +3066,6 @@ function update(dt){
     if(b.phase>0)b.phase-=dt;
     if(b.heavy>0)b.heavy-=dt;
   }
-  }   /* end of the paused gate */
 
   /* mission entities: meteors */
   for(let i=meteors.length-1;i>=0;i--){
@@ -3199,6 +3223,8 @@ function update(dt){
     if(announceCur.t>(announceCur.big?1.7:1.15))announceCur=null;
   }
   if(!announceCur&&announceQ.length)announceCur=announceQ.shift();
+
+  }   /* end of the paused gate — everything above advances play */
 
   musicTick(dt);
 
@@ -3536,22 +3562,41 @@ function drawWorld(){
       ctx.strokeStyle=R.col;ctx.lineWidth=2.4;
       ctx.stroke(path);ctx.restore();
     }
-    // mouth
+    /* The mouth used to be a rotating dashed circle — pixel for pixel the same
+       thing a scoop draws. So a ramp read as a hole, and players stood on it
+       waiting for something to happen instead of shooting up it. It is now a
+       funnel with chevrons running up the ramp: the shape tells you it is a
+       way through, and the chevrons tell you which way to hit it. */
     const m=R.mouth;
     if(vis(m.x,m.y,200)){
+      const p0=R.pts[0],p1=R.pts[1];
+      const ang=Math.atan2(p1[1]-p0[1],p1[0]-p0[0]);
+      const miss=R.miss||0;
+      const col=miss>0.02?"#93a8c8":R.col;
       ctx.save();
-      ctx.translate(m.x,m.y);ctx.rotate(timeSec*1.6);
-      ctx.strokeStyle=R.col;ctx.lineWidth=5;
-      ctx.setLineDash([12,10]);
-      ctx.globalAlpha=0.25;ctx.lineWidth=13;
-      ctx.beginPath();ctx.arc(0,0,m.r,0,7);ctx.stroke();
-      ctx.globalAlpha=1;ctx.lineWidth=5;
-      ctx.beginPath();ctx.arc(0,0,m.r,0,7);ctx.stroke();
+      ctx.translate(m.x,m.y);ctx.rotate(ang);
+      ctx.lineCap="round";ctx.lineJoin="round";
+      /* the funnel walls, opening toward the shot */
+      glowStroke(()=>{
+        ctx.beginPath();
+        ctx.moveTo(-m.r*0.75,-m.r*1.12);ctx.lineTo(m.r*0.72,-m.r*0.42);
+        ctx.moveTo(-m.r*0.75, m.r*1.12);ctx.lineTo(m.r*0.72, m.r*0.42);
+      },col,5,lit?22:12);
+      /* chevrons, flowing the way the ball has to go */
+      for(let i=0;i<3;i++){
+        const t=((timeSec*1.35+i/3)%1);
+        const x=-m.r*0.62+t*m.r*1.45;
+        ctx.globalAlpha=(1-Math.abs(t-0.5)*1.8)*(lit?1:0.72);
+        ctx.strokeStyle=col;ctx.lineWidth=4.5;
+        ctx.beginPath();
+        ctx.moveTo(x-11,-m.r*0.5);ctx.lineTo(x+11,0);ctx.lineTo(x-11,m.r*0.5);
+        ctx.stroke();
+      }
       ctx.restore();
       ctx.save();
-      ctx.fillStyle=R.col;ctx.font="900 22px 'Segoe UI'";ctx.textAlign="center";
+      ctx.fillStyle=col;ctx.font="900 22px 'Segoe UI'";ctx.textAlign="center";
       ctx.globalAlpha=0.85;
-      ctx.fillText(R.short,m.x,m.y+m.r+30);
+      ctx.fillText(R.short,m.x,m.y+m.r+34);
       ctx.restore();
     }
   });
@@ -5240,7 +5285,12 @@ window.__NSA__={
   get deckOf(){return b=>b.deck;},
   start(){newGame();},
   launch(p){launchNow(p===undefined?0.9:p);},
-  teleportBall(x,y,vx,vy){if(balls[0]){balls[0].x=x;balls[0].y=y;balls[0].vx=vx||0;balls[0].vy=vy||0;balls[0].inLane=false;balls[0].launchT=-1;ballInPlunger=false;}},
+  teleportBall(x,y,vx,vy){const b=balls[0];if(!b)return false;
+    /* a real reset: a ball still attached to a rail or a scoop ignores the
+       position you just gave it, which made ramp probes read as flaky */
+    b.x=x;b.y=y;b.vx=vx||0;b.vy=vy||0;
+    b.inLane=false;b.launchT=-1;b.rail=null;b.railSpd=0;b.scoop=null;b.hold=undefined;
+    b.magnet=null;b.trail.length=0;ballInPlunger=false;return true;},
   step(n){for(let i=0;i<(n||60);i++){update(1/60);}},
   info(){return{state,score,ballNum,balls:balls.length,peakDeck,missions:stats.missions,
     inLane:ballInPlunger,saves:stats.saves,
@@ -5269,9 +5319,15 @@ window.__NSA__={
     balls:balls.length,walls:walls.length,bumpers:bumpers.length,
     flippers:flippers.length}:null;},
   gates(){return Object.assign({},gateCool);},
+  warpsOff(){for(const k in gateCool)gateCool[k]=1e6;},
   scoopList(){return scoops.map(s=>({name:s.name,x:s.x,y:s.y,r:s.r,cool:+s.cool.toFixed(2),
     kind:s.kind,lit:!!s.lit}));},
   nudge(dir){doNudge(dir<0?-470:dir>0?470:0,dir===0?-560:-190);},
+  railDir(name){const R=rails.find(r=>r.name===name);
+    const a=R.pts[0],b2=R.pts[1],l=Math.hypot(b2[0]-a[0],b2[1]-a[1]);
+    return{x:(b2[0]-a[0])/l,y:(b2[1]-a[1])/l};},
+  railList(){return rails.map(r=>({name:r.name,short:r.short,x:r.mouth.x,y:r.mouth.y,
+    r:r.mouth.r,minSpd:r.minSpd,hits:r.hits,miss:+(r.miss||0).toFixed(2)}));},
   warping(){return warpT>0;},
   forceBoss(){missionsDone=4;bossReady=true;startBoss();},
   forceWizard(){startWizard();},
