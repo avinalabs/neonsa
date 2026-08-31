@@ -95,6 +95,7 @@ let ballNum=1,extraBalls=0,ballsPlayed=0,BALLS_PER_GAME=3;
 let bonusBank=0,endBonus=0,endBonusStep=0,endBonusTimer=0;
 let plungerCharge=0,charging=false,ballInPlunger=false,launchDeckSel=0;
 let tiltHeat=0,tilted=false,nudgesUsed=0;
+let shoveX=0,shoveY=0,shoveT=0;      // the table still moving after a nudge
 let ballSaveT=0,skillDeck=-1,skillArmed=false;
 let stormMeter=0,surge=0,surgeT=0;
 let frenzyT=0,superBumperT=0,goldT=0;

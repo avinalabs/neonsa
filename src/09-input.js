@@ -85,11 +85,16 @@ function renderBoard(){
     }).join("");
 }
 
+/* A nudge is a shove on a 300lb machine, not a flick of the ball. It lands as
+   an immediate kick AND a shorter push that keeps acting for a fifth of a
+   second — which is what makes it feel like the table moved rather than the
+   ball teleporting. Total delivered is roughly 1.7x the instant part. */
 function doNudge(dx,dy){
   if(state!=="PLAY"||tilted||paused)return;
   nudgesUsed++;
-  SND.nudge();shake(9);camPunch(.2);
+  SND.nudge();shake(15);camPunch(.34);
   tiltHeat+=1;
+  shoveX=dx*3.6;shoveY=dy*3.6;shoveT=0.2;
   for(const b of balls){if(!b.scoop&&!b.rail&&!b.magnet&&b.launchT<0){b.vx+=dx;b.vy+=dy;}}
   if(tiltHeat>=2&&tiltHeat<3)announce("EASY...",RD,false);
   if(tiltHeat>=3){
@@ -157,9 +162,9 @@ addEventListener("keydown",e=>{
     else if(cannon.loaded){cannonFire();}
     else if(state==="PLAY"&&!e.repeat){magGrab();}
   }
-  if(k==="z"||k===",")doNudge(-260,-90);
-  if(k==="x"||k===".")doNudge(260,-90);
-  if(k==="w"||k==="arrowup")doNudge(0,-300);
+  if(k==="z"||k===",")doNudge(-470,-190);
+  if(k==="x"||k===".")doNudge(470,-190);
+  if(k==="w"||k==="arrowup")doNudge(0,-560);
 });
 addEventListener("keyup",e=>{
   const k=e.key.toLowerCase();
@@ -272,8 +277,8 @@ bindHold($("tRight"),()=>{btnHold[1]=true;syncFlip(1);}, ()=>{btnHold[1]=false;s
 bindHold($("tLaunch"),
   ()=>{if(state==="PLAY"&&ballInPlunger)charging=true;else if(cannon.loaded)cannonFire();else magGrab();},
   ()=>{if(charging){charging=false;if(state==="PLAY"&&ballInPlunger)launchNow(plungerCharge);plungerCharge=0;plungerDir=1;}});
-bindHold($("tNudgeL"),()=>doNudge(-260,-90));
-bindHold($("tNudgeR"),()=>doNudge(260,-90));
+bindHold($("tNudgeL"),()=>doNudge(-470,-190));
+bindHold($("tNudgeR"),()=>doNudge(470,-190));
 
 /* tapping either half of the playfield works the flipper on that side, and two
    thumbs at once work both — the same as the on-screen buttons */
@@ -459,6 +464,9 @@ window.__NSA__={
     balls:balls.length,walls:walls.length,bumpers:bumpers.length,
     flippers:flippers.length}:null;},
   gates(){return Object.assign({},gateCool);},
+  scoopList(){return scoops.map(s=>({name:s.name,x:s.x,y:s.y,r:s.r,cool:+s.cool.toFixed(2),
+    kind:s.kind,lit:!!s.lit}));},
+  nudge(dir){doNudge(dir<0?-470:dir>0?470:0,dir===0?-560:-190);},
   warping(){return warpT>0;},
   forceBoss(){missionsDone=4;bossReady=true;startBoss();},
   forceWizard(){startWizard();},

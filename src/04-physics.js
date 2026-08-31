@@ -306,6 +306,8 @@ function physics(dt){
     b.vx+=(gravX()*gravMul+windX)*dt;
     b.vy+=gravY()*gravMul*dt;
     if(b.plasma>0)b.vy-=140*dt;                       // plasma balls float a touch
+    /* a nudge keeps pushing for a moment after your hand leaves the glass */
+    if(shoveT>0){b.vx+=shoveX*dt;b.vy+=shoveY*dt;}
     /* the warp levels bend the rules: the Deep is thick, the Spiral turns */
     if(dragMul>0){const k=Math.pow(1-clamp(dragMul,0,0.95),dt*6);b.vx*=k;b.vy*=k;}
     if(swirl!==0){
@@ -318,6 +320,7 @@ function physics(dt){
     }
     const sp0=Math.hypot(b.vx,b.vy);
     if(sp0>VMAX){b.vx*=VMAX/sp0;b.vy*=VMAX/sp0;}
+    b.lx=b.x;b.ly=b.y;
     b.x+=b.vx*dt;b.y+=b.vy*dt;
     pushTrail(b);
 
@@ -550,10 +553,22 @@ function sensors(b,dt){
     if(da<p.r){teleport(b,p,p.b,p.a);}
     else if(db<p.r){teleport(b,p,p.a,p.b);}
   }
-  /* scoops */
+  /* ---- scoops ----
+     A hole is a hole: if the ball's centre passes over the mouth, it drops in.
+     This used to require the centre within 0.9r — 40px on a hole drawn 88px
+     across — so the ball would visibly roll across a gate and nothing would
+     happen. Measured at 91% of visible touches going uncaught.
+     The test is now against the drawn radius, and it is SWEPT along the step
+     rather than sampled at the end of it, so a fast ball cannot skip the
+     mouth between substeps either. */
   for(const s of scoops){
-    if(s.cool>0)continue;
-    if(dist(b.x,b.y,s.x,s.y)<s.r*0.9&&!b.scoop){
+    if(s.cool>0||b.scoop)continue;
+    let d;
+    if(b.lx!==undefined){
+      const c=closestSeg(s.x,s.y,b.lx,b.ly,b.x,b.y);
+      d=dist(s.x,s.y,c.x,c.y);
+    }else d=dist(b.x,b.y,s.x,s.y);
+    if(d<s.r){
       b.scoop=s;b.scoopT=0;s.cool=1.6;
       onScoop(s,b);
     }

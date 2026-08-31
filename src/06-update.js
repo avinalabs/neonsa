@@ -21,11 +21,20 @@ function update(dt){
   timeSec+=dt;
   hudTick(dt);
 
+  /* Pause has to stop the GAME, not just the physics. Everything below that
+     advances play — ball save counting down, a mission running out, a scoop
+     resolving and paying — is skipped while paused; the presentation (shake,
+     flash, particles, camera) keeps running so the screen stays alive.
+     A scoop resolving through a pause was worth real points, and the zoom
+     watchdog pauses on its own, so this was reachable without even asking. */
+  const live=!paused;
+
   /* anti-cheat sampling */
   scoreWindowT+=dt;
   if(scoreWindowT>1){scoreWindowT-=1;if(scoreWindowPts>2.5e8)cheatFlag=true;scoreWindowPts=0;}
 
   /* timers */
+  if(live){
   if(comboT>0){comboT-=dt;if(comboT<=0)combo=0;}
   if(frenzyT>0)frenzyT-=dt;
   if(superBumperT>0)superBumperT-=dt;
@@ -35,13 +44,21 @@ function update(dt){
   if(slowmoT>0)slowmoT-=dt;
   if(hitStop>0)hitStop-=dt;
   tiltHeat=Math.max(0,tiltHeat-dt*0.42);
+  if(shoveT>0){shoveT-=dt;if(shoveT<=0){shoveT=0;shoveX=0;shoveY=0;}}
   shakeMag*=Math.pow(0.02,dt);
   flashA*=Math.pow(0.0009,dt);
   bgPulse*=Math.pow(0.05,dt);
   excite=Math.max(mbActive||boss.active||wizard.active?0.55:0,excite-dt*0.16);
   if(timeSec-lastScoreTime<0.6)excite=clamp(excite+dt*0.5,0,1);
+  }else{
+    /* presentation only, so a paused screen still breathes */
+    shakeMag*=Math.pow(0.02,dt);
+    flashA*=Math.pow(0.0009,dt);
+    bgPulse*=Math.pow(0.05,dt);
+  }
 
   /* gravity / wind easing */
+  if(live){
   gravAng+=clamp(gravTarget-gravAng,-dt*1.3,dt*1.3);
   if(windT>0){windT-=dt;windX=lerp(windX,windTarget,1-Math.pow(0.05,dt));}
   else{windTarget=0;windX=lerp(windX,0,1-Math.pow(0.2,dt));}
@@ -100,6 +117,7 @@ function update(dt){
 
   /* ball buffs decay */
   for(const b of balls){
+    if(!live)break;
     if(b.plasma>0){
       b.plasma-=dt;
       if(Math.random()<dt*46)parts.push({x:b.x+rand(-10,10),y:b.y+rand(-10,10),vx:rand(-60,60),vy:-rand(40,180),
@@ -108,6 +126,7 @@ function update(dt){
     if(b.phase>0)b.phase-=dt;
     if(b.heavy>0)b.heavy-=dt;
   }
+  }   /* end of the paused gate */
 
   /* mission entities: meteors */
   for(let i=meteors.length-1;i>=0;i--){

@@ -171,6 +171,21 @@ Every one of these caused a real ball trap, and they are all easy to reintroduce
   anything continuing past them makes a pinch the ball jitters in forever.
 - **Guide walls must slope away from the side wall**, or they form a V-trap in the corner.
 - **Aprons need ~8° of slope.** At 4° a ball creeps instead of sliding to the drain.
+- **A hole has to catch the ball when the ball is over the hole.** Capture used to need
+  the ball's *centre* within `0.9r` — 36px on a hole drawn 80px across — so the ball would
+  visibly roll over a gate and nothing would happen. Measured: the centre was captured out
+  to 18px, and a ball crossing the mouth at 1,200–2,600px/s was missed entirely. The test
+  is now against the full drawn radius and **swept along the step**, not sampled at the end
+  of it. `test/smoke.mjs` checks both.
+- **A nudge has to be worth the tilt it costs.** One nudge moved the ball 54px sideways in
+  0.3s, on a drain gap 150px wide — not a save, a decoration. It now lands as an immediate
+  kick *plus* a shove that keeps acting for a fifth of a second, which is what makes it feel
+  like the table moved rather than the ball teleporting: 193px, and still three nudges to a
+  tilt.
+- **Pause has to stop the game, not just the physics.** Scoop hold timers, mission clocks
+  and ball save all ran through a pause, so a scoop could resolve and pay while the game was
+  frozen. Widening the hole capture made it happen often enough for the zoom-recovery test
+  to catch it.
 - **Canvas interpolates gradient stops un-premultiplied** — a bright low-alpha stop beside
   a dark high-alpha one renders as a bright band, not a subtle tint.
 

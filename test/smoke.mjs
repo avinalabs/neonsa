@@ -226,6 +226,59 @@ console.log("\ntouch controls");
   await page.close();
 }
 
+// a hole should take the ball when the ball is over the hole
+console.log("\nholes and nudges");
+{
+  const { page, errors } = await openGame(browser, { width: 1280, height: 800 });
+  const holes = await page.evaluate(() => {
+    const N = window.__NSA__;
+    N.start();
+    for (let i = 0; i < 60; i++) N.step(1);
+    const sc = N.scoopList().find((s) => s.name === "MYSTERY");
+    const settle = () => { for (let i = 0; i < 130; i++) N.step(1); };
+    /* sat well inside the drawn mouth, but nowhere near dead centre — this is
+       the case that used to do nothing at all while looking like a clean shot */
+    N.teleportBall(sc.x + sc.r * 0.85, sc.y, 0, 0);
+    N.step(1);
+    const offCentre = !!(N.info().b[0] && N.info().b[0].scoop);
+    settle();
+    /* and crossing the mouth fast enough to cover it inside one frame */
+    const swept = {};
+    for (const v of [1200, 2600, 4200]) {
+      N.teleportBall(sc.x - v / 50, sc.y, v, 0);
+      let got = false;
+      for (let i = 0; i < 6; i++) { N.step(1); if (N.info().b[0] && N.info().b[0].scoop) { got = true; break; } }
+      swept[v] = got;
+      settle();
+    }
+    return { r: sc.r, offCentre, swept };
+  });
+  check(results, "a ball inside the mouth of a hole drops in", holes.offCentre,
+    `${Math.round(holes.r * 0.85)}px off centre on a ${holes.r}px hole`);
+  check(results, "a fast ball cannot skip across the mouth",
+    [1200, 2600, 4200].every((v) => holes.swept[v]),
+    JSON.stringify(holes.swept));
+
+  /* a nudge has to be worth the tilt risk: the drain gap is 150px, so shifting
+     the ball less than a ball-width is not a save, it is a decoration */
+  const nudge = await page.evaluate(() => {
+    const N = window.__NSA__;
+    N.teleportBall(830, 2500, 60, 300);
+    for (let i = 0; i < 6; i++) N.step(1);
+    const a = N.info().b[0];
+    const x0 = a.x, vx0 = a.vx;
+    N.nudge(1);
+    for (let i = 0; i < 18; i++) N.step(1);
+    const b = N.info().b[0];
+    return { dx: Math.round(b.x - x0 - vx0 * 0.3), tilted: N.info().state !== "PLAY" };
+  });
+  check(results, "one nudge moves the ball further than the drain is wide",
+    nudge.dx > 150, `${nudge.dx}px sideways in 0.3s`);
+  check(results, "one nudge does not tilt the table", !nudge.tilted);
+  check(results, "holes and nudges: no errors", errors.length === 0, errors[0] || "");
+  await page.close();
+}
+
 // the page getting pinch-zoomed out from under the game, and getting back
 console.log("\nzoom recovery");
 {
