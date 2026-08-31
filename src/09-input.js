@@ -25,8 +25,8 @@ function newGame(){
   bricks.forEach(b=>b.alive=true);
   brickResetT=0;
   scoops.forEach(s=>{s.cool=0;});
-  scoopBy("MISSION").lit=true;scoopBy("LOCK").lit=false;
-  scoopBy("VENT").lit=false;scoopBy("CROWN").lit=true;scoopBy("ROD").lit=true;
+  litScoop("MISSION",true);litScoop("LOCK",false);
+  litScoop("VENT",false);litScoop("CROWN",true);litScoop("ROD",true);
   spinners.forEach(s=>{s.vel=0;s.acc=0;});
   gravAng=Math.PI/2;gravTarget=Math.PI/2;windX=0;windTarget=0;windT=0;
   slowmoT=0;excite=0;
@@ -452,6 +452,14 @@ window.__NSA__={
                      R:flippers.filter(f=>f.side===1&&f.key).length,
                      pointers:canvasPointers.size};},
   forceMission(id){startMission(id||pick(MISSION_LIST).id);},
+  warp(id){gateCool[id]=0;warpBegin(id,null);},
+  warpBack(){warpExit(true);},
+  levelInfo(){return level?{id:level.id,name:level.name,t:Math.round(levelT),
+    prog:levelProg,goal:levelGoal,done:levelDone,pw:PW,ph:PH,
+    balls:balls.length,walls:walls.length,bumpers:bumpers.length,
+    flippers:flippers.length}:null;},
+  gates(){return Object.assign({},gateCool);},
+  warping(){return warpT>0;},
   forceBoss(){missionsDone=4;bossReady=true;startBoss();},
   forceWizard(){startWizard();},
   hurtBoss(n){bossDamage(n||1,boss.x,boss.y);},

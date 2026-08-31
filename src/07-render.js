@@ -51,9 +51,9 @@ function glowStroke(fn,col,w,blur){
 }
 
 /* ---------- static geometry baked into Path2D once ---------- */
-const P_WALLS=new Path2D();
+let P_WALLS=new Path2D();
 for(const w of walls){P_WALLS.moveTo(w.x1,w.y1);P_WALLS.lineTo(w.x2,w.y2);}
-const P_RAIL=rails.map(R=>{
+let P_RAIL=rails.map(R=>{
   const p=new Path2D();
   p.moveTo(R.pts[0][0],R.pts[0][1]);
   for(let i=1;i<R.pts.length;i++)p.lineTo(R.pts[i][0],R.pts[i][1]);
@@ -65,16 +65,129 @@ const P_LAUNCH=(()=>{
   for(let i=1;i<LAUNCH_PATH.length;i++)p.lineTo(LAUNCH_PATH[i][0],LAUNCH_PATH[i][1]);
   return p;
 })();
-const P_SLING=slings.map(s=>{
+let P_SLING=slings.map(s=>{
   const p=new Path2D();
   p.moveTo(s.ax,s.ay);p.lineTo(s.bx,s.by);p.lineTo(s.cx,s.cy);p.closePath();
   return p;
 });
-const P_POSTS=(()=>{
+let P_POSTS=(()=>{
   const p=new Path2D();
   for(const q of posts){p.moveTo(q.x+q.r,q.y);p.arc(q.x,q.y,q.r,0,7);}
   return p;
 })();
+/* A warp swaps the world's contents, so the geometry baked at load has to be
+   baked again. Called from restoreWorld()/enterLevel() in 03b-levels.js. */
+function rebuildPaths(){
+  P_WALLS=(()=>{const p=new Path2D();
+    for(const w of walls){p.moveTo(w.x1,w.y1);p.lineTo(w.x2,w.y2);}return p;})();
+  P_RAIL=rails.map(r=>{const p=new Path2D();
+    p.moveTo(r.pts[0][0],r.pts[0][1]);
+    for(let i=1;i<r.pts.length;i++)p.lineTo(r.pts[i][0],r.pts[i][1]);return p;});
+  P_SLING=slings.map(s=>{const p=new Path2D();
+    p.moveTo(s.ax,s.ay);p.lineTo(s.bx,s.by);p.lineTo(s.cx,s.cy);p.closePath();return p;});
+  P_POSTS=(()=>{const p=new Path2D();
+    for(const q of posts){p.moveTo(q.x+q.r,q.y);p.arc(q.x,q.y,q.r,0,7);}return p;})();
+}
+
+/* ============================================================
+   THE WARP-ROOM BACKGROUNDS
+   Drawn in SCREEN space, before the world transform and before the play-window
+   clip: they are the room you are standing in, not something on the table, and
+   they should fill every pixel including the ones behind the HUD bands.
+   Each is cheap on purpose — a handful of fills and one stroked path set — so
+   a phone can afford them on top of a full playfield.
+   ============================================================ */
+function drawLevelBG(){
+  const t=timeSec, q=clamp(quality,0.35,1);
+  ctx.save();
+  const cx=VW/2, cy=playTop()+playH()*0.44;
+  const R=Math.hypot(VW,VH);
+
+  if(level.id==="spiral"){
+    /* The hypnosis, done with FILLS rather than long wide strokes: a pinwheel
+       of wedges turning one way, rings breathing outward through it the other.
+       The first version stroked twelve 50-point spirals a frame and cost more
+       than the whole playfield; a wedge is three points and a fill. */
+    ctx.translate(cx,cy);
+    ctx.rotate(t*0.19);
+    const wedges=Math.round(7*q)+5;
+    for(let i=0;i<wedges;i++){
+      const a0=i/wedges*Math.PI*2, a1=a0+Math.PI/wedges*0.92;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,R*0.8,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=`hsla(${(t*20+i*(360/wedges))%360},88%,58%,0.075)`;
+      ctx.fill();
+    }
+    ctx.rotate(-t*0.34);
+    const rings=Math.round(8*q)+3;
+    for(let i=0;i<rings;i++){
+      const p=(i/rings+((t*0.13)%1))%1;
+      const rr=p*R*0.72;
+      ctx.beginPath();ctx.arc(0,0,rr,0,7);
+      ctx.strokeStyle=`hsla(${(t*22+i*24)%360},96%,66%,${0.17*(1-p)})`;
+      ctx.lineWidth=2+10*(1-p);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const gg=ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.55);
+    const b=0.10+0.05*Math.sin(t*1.1);
+    gg.addColorStop(0,`rgba(178,107,255,${b})`);
+    gg.addColorStop(1,"rgba(178,107,255,0)");
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    return;
+  }
+
+  if(level.id==="forge"){
+    /* heat rising, and a furnace glow that brightens as the lava climbs */
+    const s2=camScale();
+    const lavaScreen=(lavaY-cam.y)*s2+playTop()+playH()/2;
+    const heat=clamp(1-(lavaScreen-playTop())/Math.max(playH(),1),0,1);
+    const bands=Math.round(8*q)+3;
+    for(let i=0;i<bands;i++){
+      const p=((i/bands)-((t*0.09)%1)+1)%1;
+      const y=VH-p*VH*1.15;
+      ctx.fillStyle=`rgba(255,${90+120*(1-p)|0},20,${0.055*(1-p)*(0.5+heat)})`;
+      ctx.fillRect(0,y,VW,VH*0.06);
+    }
+    const gg=ctx.createLinearGradient(0,VH,0,VH*0.25);
+    gg.addColorStop(0,`rgba(255,90,10,${0.20+heat*0.34})`);
+    gg.addColorStop(1,"rgba(255,60,0,0)");
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    ctx.restore();
+    return;
+  }
+
+  /* the deep: slow curtains of light and a drifting caustic net */
+  const curtains=Math.round(3*q)+2;
+  for(let i=0;i<curtains;i++){
+    const ph=t*0.19+i*1.7;
+    const x=(Math.sin(ph)*0.5+0.5)*VW;
+    const w2=VW*(0.13+0.07*Math.sin(ph*1.7));
+    const gg=ctx.createLinearGradient(x-w2,0,x+w2,0);
+    gg.addColorStop(0,"rgba(57,255,106,0)");
+    gg.addColorStop(0.5,`rgba(${i%2?57:120},255,${i%2?150:230},${0.07+0.03*Math.sin(ph*2.3)})`);
+    gg.addColorStop(1,"rgba(57,255,106,0)");
+    ctx.fillStyle=gg;ctx.fillRect(x-w2,0,w2*2,VH);
+  }
+  if(q>0.55){
+    ctx.strokeStyle="rgba(160,255,220,0.05)";ctx.lineWidth=1.4;
+    ctx.beginPath();
+    const step=140;
+    for(let y=0;y<VH+step;y+=step){
+      ctx.moveTo(0,y+Math.sin(t*0.7)*10);
+      for(let x=0;x<=VW;x+=90)
+        ctx.lineTo(x,y+Math.sin(t*0.7+x*0.012+y*0.01)*14);
+    }
+    ctx.stroke();
+  }
+  const gg2=ctx.createRadialGradient(cx,VH,0,cx,VH,VH*1.1);
+  gg2.addColorStop(0,"rgba(2,40,44,0.5)");
+  gg2.addColorStop(1,"rgba(2,23,26,0)");
+  ctx.fillStyle=gg2;ctx.fillRect(0,0,VW,VH);
+  ctx.restore();
+}
 
 function drawWorld(){
   const s=camScale();
@@ -93,9 +206,10 @@ function drawWorld(){
   const g=ctx.createLinearGradient(0,0,0,VH);
   const topD=deckAt(clamp(vy0,0,PH-1)),botD=deckAt(clamp(vy1,0,PH-1));
   g.addColorStop(0,topD.dark);
-  g.addColorStop(0.5,"#040317");
+  g.addColorStop(0.5,level?level.dark:"#040317");
   g.addColorStop(1,botD.dark);
   ctx.fillStyle=g;ctx.fillRect(0,0,VW,VH);
+  if(level)drawLevelBG();
   if(bgPulse>0.02){ctx.fillStyle=`rgba(25,230,255,${bgPulse*0.05})`;ctx.fillRect(0,0,VW,VH);}
 
   /* Clip the playfield to the play window. The HUD bands are laid out so no
@@ -189,7 +303,8 @@ function drawWorld(){
     }
   });
 
-  /* ---- launch lane tube ---- */
+  /* ---- launch lane tube (the tower's, and only the tower's) ---- */
+  if(!level){
   ctx.save();
   ctx.lineCap="round";ctx.lineJoin="round";
   ctx.strokeStyle="rgba(6,8,26,0.9)";ctx.lineWidth=64;
@@ -211,6 +326,8 @@ function drawWorld(){
     if(sk){ctx.font="900 14px 'Segoe UI'";ctx.fillText("SKILL",e.x+40,e.y+26);}
     ctx.restore();
   });
+
+  }
 
   /* ---- portals ---- */
   for(const p of portals){
@@ -260,8 +377,8 @@ function drawWorld(){
   /* ---- walls ---- */
   neonPath(P_WALLS,"rgba(25,230,255,0.92)",6,1);
 
-  /* ---- separator girders ---- */
-  for(const sp of SEPS){
+  /* ---- separator girders (tower only — a warp room is one floor) ---- */
+  for(const sp of (level?[]:SEPS)){
     if(sp.y<vy0-200||sp.y>vy1+200)continue;
     const col=DECKS[sp.deck].col;
     ctx.save();
@@ -327,6 +444,23 @@ function drawWorld(){
   /* ---- rollovers + lanes ---- */
   for(const r of rollovers){
     if(!vis(r.x,r.y,220))continue;
+    /* a warp room's rollovers are not STORM letters — a pearl is a pearl */
+    if(level){
+      const on=!!r.lit, c=r.pearl?(on?GR:IC):(on?level.col2:level.col);
+      ctx.save();
+      ctx.strokeStyle=c;ctx.lineWidth=on?5:3;ctx.globalAlpha=on?1:0.55;
+      if(on)glowOn(c,18);
+      ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,7);ctx.stroke();
+      if(r.pearl){
+        ctx.globalAlpha=on?1:0.35;
+        const g2=ctx.createRadialGradient(r.x-r.r*0.3,r.y-r.r*0.3,1,r.x,r.y,r.r*0.8);
+        g2.addColorStop(0,"#ffffff");g2.addColorStop(1,on?GR:"rgba(140,220,255,0.5)");
+        ctx.fillStyle=g2;
+        ctx.beginPath();ctx.arc(r.x,r.y,r.r*0.62,0,7);ctx.fill();
+      }
+      ctx.restore();
+      continue;
+    }
     const crown=r.group==="crown";
     const done=crown?false:stormLetters[r.id];
     const col=crown?YL:(done?GR:CY);
@@ -381,8 +515,35 @@ function drawWorld(){
   /* ---- scoops ---- */
   for(const sc of scoops){
     if(!vis(sc.x,sc.y,260))continue;
-    const on=sc.lit||sc.kind==="mystery"||sc.kind==="cannon";
+    let on=sc.lit||sc.kind==="mystery"||sc.kind==="cannon";
     if(sc.kind==="rod"&&boss.active)continue;
+    /* a warp gate is a hole, not a target: draw the tunnel down it, and go
+       grey while it is cooling so you can see at a glance where you can go */
+    if(sc.warp){
+      const ready=gateCool[sc.level]<=0;
+      on=ready;
+      const LC=LEVELS[sc.level];
+      ctx.save();ctx.translate(sc.x,sc.y);
+      for(let i=0;i<5;i++){
+        const p=((i/5)+((timeSec*(ready?0.55:0.14))%1))%1;
+        ctx.beginPath();ctx.arc(0,0,sc.r*(1.55-p*1.35),0,7);
+        ctx.strokeStyle=ready?LC.col:"rgba(140,150,180,0.5)";
+        ctx.globalAlpha=(ready?0.5:0.16)*(1-Math.abs(p-0.35));
+        ctx.lineWidth=3+7*(1-p);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      ctx.rotate(-timeSec*(ready?1.7:0.4));
+      ctx.fillStyle=ready?LC.dark:"#0b0d18";
+      ctx.beginPath();ctx.arc(0,0,sc.r*0.82,0,7);ctx.fill();
+      ctx.restore();
+      if(!ready){
+        ctx.save();
+        ctx.fillStyle="rgba(160,175,205,0.75)";
+        ctx.font="900 20px 'Segoe UI'";ctx.textAlign="center";
+        ctx.fillText(Math.ceil(gateCool[sc.level])+"s",sc.x,sc.y+7);
+        ctx.restore();
+      }
+    }
     ctx.save();ctx.translate(sc.x,sc.y);
     ctx.fillStyle="rgba(0,0,0,0.6)";
     ctx.beginPath();ctx.arc(0,0,sc.r,0,7);ctx.fill();
@@ -397,6 +558,64 @@ function drawWorld(){
     ctx.fillStyle=on?sc.col:"rgba(150,160,200,0.5)";
     ctx.font="900 19px 'Segoe UI'";ctx.textAlign="center";
     ctx.fillText(sc.name,sc.x,sc.y+sc.r+28);
+    ctx.restore();
+  }
+
+  /* ---- the Forgeworks: molten floor and the pistons ---- */
+  if(level&&level.id==="forge"){
+    for(const p of pistons){
+      if(!p.ext||p.ext<2)continue;
+      const x0=p.dir>0?p.x:p.x-p.ext, w2=p.ext;
+      ctx.save();
+      ctx.fillStyle=p.fx>0?YL:"#7a3a10";
+      ctx.fillRect(x0,p.y-p.h/2,w2,p.h);
+      ctx.strokeStyle=p.fx>0?WH:OR;ctx.lineWidth=3;
+      if(GLOW>0)glowOn(OR,14);
+      ctx.strokeRect(x0,p.y-p.h/2,w2,p.h);
+      ctx.restore();
+    }
+    if(lavaY<vy1+200){
+      ctx.save();
+      /* only paint the molten part you can actually see — the shaft below it
+         can be a thousand pixels of gradient nobody is looking at */
+      const bot=Math.min(PH+180,vy1+160);
+      const lg=ctx.createLinearGradient(0,lavaY-90,0,bot);
+      lg.addColorStop(0,"rgba(255,60,0,0)");
+      lg.addColorStop(0.35,"rgba(255,110,10,0.65)");
+      lg.addColorStop(1,"rgba(255,220,90,0.95)");
+      ctx.fillStyle=lg;ctx.fillRect(0,lavaY-90,PW,bot-lavaY+90);
+      const surf=new Path2D(), body=new Path2D();
+      surf.moveTo(0,lavaY);body.moveTo(0,lavaY);
+      for(let x=0;x<=PW;x+=60){
+        const yy=lavaY+Math.sin(timeSec*3.1+x*0.012)*13+Math.sin(timeSec*1.7+x*0.03)*7;
+        surf.lineTo(x,yy);body.lineTo(x,yy);
+      }
+      body.lineTo(PW,bot);body.lineTo(0,bot);body.closePath();
+      ctx.fillStyle="rgba(255,150,30,0.55)";ctx.fill(body);
+      /* layered strokes, not shadowBlur — same rule as the rest of the game */
+      ctx.strokeStyle=OR;ctx.globalAlpha=0.3;ctx.lineWidth=16;ctx.stroke(surf);
+      ctx.globalAlpha=1;ctx.strokeStyle=YL;ctx.lineWidth=5;ctx.stroke(surf);
+      ctx.restore();
+    }
+  }
+  /* ---- the Deep: the currents you are drifting in ---- */
+  if(level&&level.id==="deep"&&quality>0.5){
+    ctx.save();
+    ctx.strokeStyle="rgba(160,255,220,0.16)";ctx.lineWidth=2.5;ctx.lineCap="round";
+    for(const c of currents){
+      const n=6;
+      for(let i=0;i<n;i++){
+        const a=i/n*Math.PI*2+timeSec*0.3;
+        const px=c.x+Math.cos(a)*c.r*0.62, py=c.y+Math.sin(a)*c.r*0.62;
+        const m=Math.hypot(c.fx,c.fy)||1;
+        const dx=c.fx/m*46, dy=c.fy/m*46;
+        const wob=Math.sin(timeSec*1.6+i)*10;
+        ctx.beginPath();
+        ctx.moveTo(px-dx,py-dy+wob);
+        ctx.quadraticCurveTo(px+wob,py,px+dx,py+dy+wob);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
@@ -436,7 +655,7 @@ function drawWorld(){
   /* ---- flippers ---- */
   for(const f of flippers){
     if(!vis(f.px,f.py,420))continue;
-    const col=f.main?YL:DECKS[f.deck].col;
+    const col=f.main?YL:(DECKS[f.deck]||DECKS[0]).col;
     glowStroke(()=>{ctx.beginPath();ctx.moveTo(f.px,f.py);ctx.lineTo(tipX(f),tipY(f));},
       f.key?WH:col,f.main?26:23,f.key?24:13);
     ctx.save();
@@ -633,6 +852,43 @@ function drawWorld(){
     const g2=ctx.createLinearGradient(0,fy,0,VH);
     g2.addColorStop(0,"rgba(2,4,20,0)");g2.addColorStop(1,"rgba(2,4,20,0.78)");
     ctx.fillStyle=g2;ctx.fillRect(0,fy,VW,fh);
+  }
+
+  /* ---- the warp itself ----
+     The room does not cross-fade, it collapses: everything rushes toward the
+     hole, the screen goes to the destination's colour, then it blows back out
+     around the new machine. Drawn last so it covers the HUD too. */
+  if(warpT>0){
+    const dur=warpDir===2?0.42:0.5;
+    const k=clamp(1-warpT/dur,0,1);
+    const closing=warpDir!==2;
+    const a=closing?k:1-k;
+    const col=(warpTo&&LEVELS[warpTo])||level||{col:CY,col2:WH};
+    const cx=VW/2, cy=playTop()+playH()/2, R=Math.hypot(VW,VH);
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate((closing?1:-1)*k*3.4);
+    ctx.lineCap="round";
+    const N=Math.round(26*clamp(quality,0.4,1))+10;
+    for(let i=0;i<N;i++){
+      const ang=i/N*Math.PI*2;
+      const r0=R*(closing?(1-k):k)*0.5, r1=r0+R*0.55*a;
+      ctx.strokeStyle=i%2?col.col:(col.col2||WH);
+      ctx.globalAlpha=0.5*a;
+      ctx.lineWidth=3+22*a;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*r0,Math.sin(ang)*r0);
+      ctx.lineTo(Math.cos(ang)*r1,Math.sin(ang)*r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const gg=ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.62);
+    gg.addColorStop(0,`rgba(255,255,255,${a*0.95})`);
+    gg.addColorStop(0.35,`${col.col}`);
+    gg.addColorStop(1,"rgba(2,1,10,0)");
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    ctx.globalAlpha=1;
   }
 
   /* ---- full-screen tints ---- */

@@ -211,6 +211,17 @@ const launchRail=(()=>{
   return{pts:LAUNCH_PATH,seg,cum,total};
 })();
 
+/* ---------- THE THREE WARP GATES ----------
+   One per floor, in the open where a decent shot can reach them. Each one is a
+   hole to a different machine (03b-levels.js); after a visit it goes cold for
+   a while, so you cannot simply farm the room you like best. */
+scoops.push({x:250, y:2180,r:44,name:"SPIRAL GATE",kind:"warp",level:"spiral",
+             cool:0,lit:true,col:PU,deck:1,warp:true});
+scoops.push({x:1420,y:1560,r:44,name:"FORGE GATE", kind:"warp",level:"forge",
+             cool:0,lit:true,col:OR,deck:2,warp:true});
+scoops.push({x:262, y:900, r:44,name:"ABYSS GATE", kind:"warp",level:"deep",
+             cool:0,lit:true,col:GR,deck:3,warp:true});
+
 /* ---------- PORTALS ---------- */
 portals.push({a:{x:830,y:2126},b:{x:1512,y:1440},r:40,cool:0,col:MG,name:"WARP I"});
 portals.push({a:{x:1544,y:930}, b:{x:624,y:158}, r:40,cool:0,col:CY,name:"WARP II"});

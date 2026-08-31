@@ -59,6 +59,23 @@ the height they cost.
 
 ---
 
+## Three holes that are not holes
+
+Three gates are cut into the tower — one on the Bazaar, one on the Foundry, one on the
+Spine. Fall down one and you are not on the tower any more.
+
+| | | |
+|---|---|---|
+| **THE HYPNOSPIRAL** | a circular room that will not sit still — three rings of bumpers orbiting at different rates, light gravity and a swirl that curls every shot | hit **THE EYE** three times |
+| **THE FORGEWORKS** | a 2,200px shaft under 1.3x gravity with molten metal rising the whole time you are in it; pistons slam out of the walls | hit **THE VENT** — each hit drives the lava back down |
+| **THE DEEP** | a third of gravity and real drag, so the ball drifts instead of drops; standing currents push it around and the jellyfish breathe | collect six **PEARLS**, then feed the maw |
+
+Each has its own palette, its own animated background and its own voice — the bumpers,
+slings and rollovers are re-tuned per room, so the Spiral chimes, the Forge clanks and the
+Deep plops. **You cannot lose a ball down there**: the room hands it back twice, and when
+your time is up it spits you out of the gate you came in through. Clear the objective for
+the jackpot; the gate then goes cold for 34 seconds so you cannot farm one room.
+
 ## What's in it
 
 Four habitrails, two portal pairs, two magnets, a cannon you aim by timing · a
@@ -98,13 +115,14 @@ src/                the actual source, split by concern
   01-shell.html       markup, CSS, all the screens
   02-core.js          constants, deck table, maths, the audio engine
   03-table.js         playfield geometry — every wall, toy and rail
+  03b-levels.js       the three warp machines, and the world swap
   04-physics.js       camera and collision
   05-game.js          scoring, missions, boss, power-ups, ball lifecycle
   06-update.js        per-frame simulation
   07-render.js        world rendering
   08-hud.js           HUD, minimap, score card
   09-input.js         game flow, input, the frame loop
-test/               Playwright smoke, soak and performance suites
+test/               Playwright smoke, warp-level, soak and performance suites
 docs/               screenshots
 ```
 
@@ -125,6 +143,7 @@ node build.mjs --check # fail if index.html is stale (CI runs this)
 npm install
 npx playwright install chromium
 npm test               # smoke: 7 viewports, pads vs ball, zoom recovery, game-over, multi-touch
+npm run test:levels    # each warp room built, played, escaped, and timed
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
 ```
@@ -182,6 +201,29 @@ And on rendering: neon is drawn as **layered strokes**, wide-and-faint under
 narrow-and-bright, over `Path2D` geometry baked once at load. It used to use canvas
 `shadowBlur`, which cost 120 blur passes a frame and roughly doubled frame time.
 `test/perf.mjs` guards against that coming back.
+
+---
+
+## How a warp actually works
+The tower is built once at load into the arrays in `src/03-table.js`. Rather than thread a
+world parameter through every collision loop and every draw call, a warp **swaps those
+arrays' contents**: the array objects themselves never change identity, so every
+`for (const w of walls)` in the codebase keeps working untouched. `PW`, `PH` and `DECKS`
+become `let` and are swapped alongside; the baked `Path2D` geometry is rebuilt.
+
+The tower's live state survives the round trip because `snapshotWorld()` stashes the
+*objects*, not copies of them — dropped targets stay dropped, broken bricks stay broken,
+and a lit lock is still lit when you come back up.
+
+Two rules earned by testing:
+
+- **One closed wall system per room.** The Spiral's first version had a bowl and a set of
+  aprons that crossed near the bottom right, and the ball wedged in the V they made. The
+  rewrite is a single circular wall with a gap for the drain.
+- **Everything the tower owns holds its breath.** Missions, the boss, the cannon, the
+  weather and the orb spawner are all frozen while you are in a room, and `sw()` stops
+  feeding switch hits to them. Without that, a mission could complete down a warp hole and
+  try to light a scoop that does not exist in that world.
 
 ---
 

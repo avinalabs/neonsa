@@ -24,5 +24,8 @@ jobs:
       - name: Smoke tests
         run: node test/smoke.mjs
 
+      - name: Warp levels
+        run: node test/levels.mjs 2 60
+
       - name: Soak test
         run: node test/soak.mjs 3 200

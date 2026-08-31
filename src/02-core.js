@@ -8,7 +8,9 @@
 /* coarse pointer = phone/tablet: drives the on-screen pads, the HUD bands
    and every piece of control wording the game shows. */
 const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
-const PW=1760, PH=2900;                 // playfield (world) size
+/* Playfield size and deck table are LET, not const: the warp holes swap the
+   whole world out for one of the bonus machines in 03b-levels.js. */
+let PW=1760, PH=2900;                   // playfield (world) size
 const BALLR=20;
 const G=3100;                           // gravity
 const VMAX=5200;
@@ -62,7 +64,7 @@ function closestSeg(px,py,x1,y1,x2,y2){
 }
 
 /* ---------- decks (bottom index 0 = ground floor) ---------- */
-const DECKS=[
+let DECKS=[
   {id:0,name:"THE GUTTER",  short:"GUTTER", y0:2410,y1:2900,mult:1,col:CY, hue:"rgba(25,230,255,", dark:"#04141b"},
   {id:1,name:"NEON BAZAAR", short:"BAZAAR", y0:1860,y1:2410,mult:2,col:MG, hue:"rgba(255,43,214,", dark:"#170519"},
   {id:2,name:"THE FOUNDRY", short:"FOUNDRY",y0:1250,y1:1860,mult:3,col:OR, hue:"rgba(255,154,31,", dark:"#190d03"},
@@ -71,8 +73,14 @@ const DECKS=[
 ];
 function deckAt(y){
   for(let i=0;i<DECKS.length;i++) if(y>=DECKS[i].y0) return DECKS[i];
-  return DECKS[4];
+  return DECKS[DECKS.length-1];
 }
+/* ---------- warp-level state (see 03b-levels.js) ---------- */
+let level=null;                 // the LEVELS entry we are inside, or null on the tower
+let levelT=0, levelGoal=0, levelProg=0, levelJack=0, levelDone=false, levelSaves=0;
+let warpT=0, warpDir=0, warpTo=null;     // transition timer / +1 in, -1 out
+let gravMul=1, dragMul=0, swirl=0;       // per-level physics
+let voice=null;                          // per-level sound palette
 
 /* ---------- global state ---------- */
 let state="ATTRACT";
@@ -186,10 +194,14 @@ function arp(list,d,type,vol,step,f2){list.forEach((f,i)=>tone(f,d,type,vol,f2,i
 
 const SND={
   flip(){tone(190,0.05,"square",0.2,90);noise(0.028,0.12,2200);},
-  bumper(n){tone(430+n*60,0.09,"sine",0.34,220+n*60);tone(880+n*120,0.05,"triangle",0.16);},
-  sling(){noise(0.06,0.34,1100);tone(230,0.05,"square",0.18,120);},
-  roll(){tone(920,0.06,"triangle",0.24,1380);},
-  target(){tone(200,0.09,"sawtooth",0.26,430);noise(0.04,0.16,3000);},
+  bumper(n){if(voice&&voice.bumper)return voice.bumper(n);
+    tone(430+n*60,0.09,"sine",0.34,220+n*60);tone(880+n*120,0.05,"triangle",0.16);},
+  sling(){if(voice&&voice.sling)return voice.sling();
+    noise(0.06,0.34,1100);tone(230,0.05,"square",0.18,120);},
+  roll(){if(voice&&voice.roll)return voice.roll();
+    tone(920,0.06,"triangle",0.24,1380);},
+  target(){if(voice&&voice.target)return voice.target();
+    tone(200,0.09,"sawtooth",0.26,430);noise(0.04,0.16,3000);},
   brick(n){tone(500+n*40,0.07,"square",0.2,900+n*40);noise(0.03,0.12,2600);},
   bank(){arp([440,554,659,880],0.12,"square",0.24,0.065);},
   launch(p){sweep(120+p*220,900+p*700,0.32,0.3);noise(0.26,0.16,500,6000);},
@@ -227,7 +239,30 @@ const SND={
   wizard(){for(let i=0;i<10;i++)arp([523,659,784,1047],0.2,"square",0.14,0.05,undefined);noise(1.2,0.2,300,6000);},
   ach(){arp([1568,2093,2637],0.16,"triangle",0.2,0.055);},
   cannon(){sweep(90,900,0.3,0.34,"square");noise(0.3,0.26,300,5000);},
-  windGust(){noise(1.1,0.1,300,1600);}
+  windGust(){noise(1.1,0.1,300,1600);},
+
+  /* ---------- the warp holes and what is on the other side ---------- */
+  warpCharge(){sweep(200,2600,0.55,0.22,"sine");sweep(2600,200,0.55,0.16,"sine",0.1);
+    noise(0.6,0.12,400,9000);},
+  warpIn(){for(let i=0;i<9;i++)tone(180*Math.pow(1.26,i),0.16,"sine",0.2,undefined,i*0.045);
+    noise(0.9,0.22,120,7000);tone(48,1.1,"sine",0.4,26);},
+  warpOut(){for(let i=8;i>=0;i--)tone(180*Math.pow(1.26,i),0.14,"sine",0.18,undefined,(8-i)*0.04);
+    noise(0.7,0.18,180,6000);sweep(900,90,0.6,0.26,"triangle");},
+  /* spiral: a shepard-ish rise that never seems to arrive */
+  spiralEye(){for(let i=0;i<5;i++)tone(330*Math.pow(2,i/3),0.5,"sine",0.16-i*0.02,undefined,i*0.03);
+    noise(0.5,0.1,600,5000);},
+  spiralAmb(){tone(58,2.2,"sine",0.1,55);tone(87,2.2,"sine",0.06,82);},
+  /* forge: metal on metal */
+  forgeHit(){tone(96,0.3,"square",0.3,54);noise(0.18,0.3,900,7000);tone(1470,0.07,"square",0.12);},
+  forgeLava(){noise(1.0,0.24,40,420);sweep(150,52,0.9,0.24,"sawtooth");},
+  forgePiston(){noise(0.14,0.34,200,2600);tone(140,0.12,"square",0.26,70);},
+  /* deep: soft, wet, far away */
+  deepPop(){tone(rand(700,1500),0.22,"sine",0.2,rand(1600,2600));noise(0.1,0.05,1800,9000);},
+  deepPearl(){arp([1319,1760,2093,2637],0.34,"sine",0.16,0.06);},
+  deepAmb(){tone(41,3,"sine",0.11,38);tone(62,3,"sine",0.05,58);},
+  levelJack(){arp([392,523,659,784,1047,1319,1568,2093],0.4,"triangle",0.24,0.06);
+    noise(1.1,0.26,200,6000);tone(65,1.3,"sine",0.34,40);},
+  levelEnd(){arp([784,659,523,392],0.3,"sine",0.22,0.1);noise(0.5,0.1,200,3000);}
 };
 
 /* music: 5 keys, one per deck; tempo tracks excitement */

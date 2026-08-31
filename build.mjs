@@ -18,7 +18,10 @@ const srcDir = join(root, "src");
 const out = join(root, "index.html");
 
 const parts = (await readdir(srcDir))
-  .filter((f) => /^\d\d-.+\.(html|js)$/.test(f))
+  /* NN-name or NNx-name, so a part can be slotted between two existing ones
+     without renumbering everything after it (03b-levels.js sorts between
+     03-table.js and 04-physics.js, which is exactly where it has to run) */
+  .filter((f) => /^\d\d[a-z]?-.+\.(html|js)$/.test(f))
   .sort();
 
 if (parts.length === 0) {

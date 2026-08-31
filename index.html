@@ -100,6 +100,9 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px}
   #shareImg{display:block;max-height:42vh;border-radius:12px;box-shadow:0 0 44px rgba(25,230,255,.3);
     border:1px solid rgba(25,230,255,.45);margin:14px auto 0}
+  .pad.p{border-color:var(--pu);color:var(--pu)}
+  .pad.o{border-color:var(--or);color:var(--or)}
+  .pad.g{border-color:var(--gr);color:var(--gr)}
   #initWrap input{-webkit-user-select:text;user-select:text;touch-action:manipulation;
     font-family:Consolas,monospace;font-weight:900;font-size:44px;letter-spacing:14px;
     width:210px;text-align:center;text-transform:uppercase;background:rgba(0,0,0,.5);color:var(--yl);
@@ -247,6 +250,17 @@
         <em>MISSIONS</em> at the Spine scoop. Four of them lights
         <u>THE STORM KING</u>. Beat him for <em>ASCENSION</em>.
       </div>
+      <div class="col">
+        <h3>THE THREE GATES</h3>
+        Three holes in the tower are not holes. Fall down one and you are
+        somewhere else entirely &mdash; a different machine, different gravity,
+        different everything.<br>
+        <span class="pad p">SPIRAL</span> a turning room that will not sit still<br>
+        <span class="pad o">FORGE</span> climb, the floor is molten and rising<br>
+        <span class="pad g">ABYSS</span> a third of gravity, and currents<br>
+        <u>You cannot lose a ball down there.</u> Clear the room for the
+        jackpot, then the gate goes cold for a while.
+      </div>
     </div>
     <button class="nbtn" id="startBtn">&#9889; INSERT COIN &#9889;</button>
     <div class="tag desk-only" style="margin-top:10px">or press <kbd>ENTER</kbd></div>
@@ -334,7 +348,9 @@
 /* coarse pointer = phone/tablet: drives the on-screen pads, the HUD bands
    and every piece of control wording the game shows. */
 const IS_TOUCH=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||false;
-const PW=1760, PH=2900;                 // playfield (world) size
+/* Playfield size and deck table are LET, not const: the warp holes swap the
+   whole world out for one of the bonus machines in 03b-levels.js. */
+let PW=1760, PH=2900;                   // playfield (world) size
 const BALLR=20;
 const G=3100;                           // gravity
 const VMAX=5200;
@@ -388,7 +404,7 @@ function closestSeg(px,py,x1,y1,x2,y2){
 }
 
 /* ---------- decks (bottom index 0 = ground floor) ---------- */
-const DECKS=[
+let DECKS=[
   {id:0,name:"THE GUTTER",  short:"GUTTER", y0:2410,y1:2900,mult:1,col:CY, hue:"rgba(25,230,255,", dark:"#04141b"},
   {id:1,name:"NEON BAZAAR", short:"BAZAAR", y0:1860,y1:2410,mult:2,col:MG, hue:"rgba(255,43,214,", dark:"#170519"},
   {id:2,name:"THE FOUNDRY", short:"FOUNDRY",y0:1250,y1:1860,mult:3,col:OR, hue:"rgba(255,154,31,", dark:"#190d03"},
@@ -397,8 +413,14 @@ const DECKS=[
 ];
 function deckAt(y){
   for(let i=0;i<DECKS.length;i++) if(y>=DECKS[i].y0) return DECKS[i];
-  return DECKS[4];
+  return DECKS[DECKS.length-1];
 }
+/* ---------- warp-level state (see 03b-levels.js) ---------- */
+let level=null;                 // the LEVELS entry we are inside, or null on the tower
+let levelT=0, levelGoal=0, levelProg=0, levelJack=0, levelDone=false, levelSaves=0;
+let warpT=0, warpDir=0, warpTo=null;     // transition timer / +1 in, -1 out
+let gravMul=1, dragMul=0, swirl=0;       // per-level physics
+let voice=null;                          // per-level sound palette
 
 /* ---------- global state ---------- */
 let state="ATTRACT";
@@ -512,10 +534,14 @@ function arp(list,d,type,vol,step,f2){list.forEach((f,i)=>tone(f,d,type,vol,f2,i
 
 const SND={
   flip(){tone(190,0.05,"square",0.2,90);noise(0.028,0.12,2200);},
-  bumper(n){tone(430+n*60,0.09,"sine",0.34,220+n*60);tone(880+n*120,0.05,"triangle",0.16);},
-  sling(){noise(0.06,0.34,1100);tone(230,0.05,"square",0.18,120);},
-  roll(){tone(920,0.06,"triangle",0.24,1380);},
-  target(){tone(200,0.09,"sawtooth",0.26,430);noise(0.04,0.16,3000);},
+  bumper(n){if(voice&&voice.bumper)return voice.bumper(n);
+    tone(430+n*60,0.09,"sine",0.34,220+n*60);tone(880+n*120,0.05,"triangle",0.16);},
+  sling(){if(voice&&voice.sling)return voice.sling();
+    noise(0.06,0.34,1100);tone(230,0.05,"square",0.18,120);},
+  roll(){if(voice&&voice.roll)return voice.roll();
+    tone(920,0.06,"triangle",0.24,1380);},
+  target(){if(voice&&voice.target)return voice.target();
+    tone(200,0.09,"sawtooth",0.26,430);noise(0.04,0.16,3000);},
   brick(n){tone(500+n*40,0.07,"square",0.2,900+n*40);noise(0.03,0.12,2600);},
   bank(){arp([440,554,659,880],0.12,"square",0.24,0.065);},
   launch(p){sweep(120+p*220,900+p*700,0.32,0.3);noise(0.26,0.16,500,6000);},
@@ -553,7 +579,30 @@ const SND={
   wizard(){for(let i=0;i<10;i++)arp([523,659,784,1047],0.2,"square",0.14,0.05,undefined);noise(1.2,0.2,300,6000);},
   ach(){arp([1568,2093,2637],0.16,"triangle",0.2,0.055);},
   cannon(){sweep(90,900,0.3,0.34,"square");noise(0.3,0.26,300,5000);},
-  windGust(){noise(1.1,0.1,300,1600);}
+  windGust(){noise(1.1,0.1,300,1600);},
+
+  /* ---------- the warp holes and what is on the other side ---------- */
+  warpCharge(){sweep(200,2600,0.55,0.22,"sine");sweep(2600,200,0.55,0.16,"sine",0.1);
+    noise(0.6,0.12,400,9000);},
+  warpIn(){for(let i=0;i<9;i++)tone(180*Math.pow(1.26,i),0.16,"sine",0.2,undefined,i*0.045);
+    noise(0.9,0.22,120,7000);tone(48,1.1,"sine",0.4,26);},
+  warpOut(){for(let i=8;i>=0;i--)tone(180*Math.pow(1.26,i),0.14,"sine",0.18,undefined,(8-i)*0.04);
+    noise(0.7,0.18,180,6000);sweep(900,90,0.6,0.26,"triangle");},
+  /* spiral: a shepard-ish rise that never seems to arrive */
+  spiralEye(){for(let i=0;i<5;i++)tone(330*Math.pow(2,i/3),0.5,"sine",0.16-i*0.02,undefined,i*0.03);
+    noise(0.5,0.1,600,5000);},
+  spiralAmb(){tone(58,2.2,"sine",0.1,55);tone(87,2.2,"sine",0.06,82);},
+  /* forge: metal on metal */
+  forgeHit(){tone(96,0.3,"square",0.3,54);noise(0.18,0.3,900,7000);tone(1470,0.07,"square",0.12);},
+  forgeLava(){noise(1.0,0.24,40,420);sweep(150,52,0.9,0.24,"sawtooth");},
+  forgePiston(){noise(0.14,0.34,200,2600);tone(140,0.12,"square",0.26,70);},
+  /* deep: soft, wet, far away */
+  deepPop(){tone(rand(700,1500),0.22,"sine",0.2,rand(1600,2600));noise(0.1,0.05,1800,9000);},
+  deepPearl(){arp([1319,1760,2093,2637],0.34,"sine",0.16,0.06);},
+  deepAmb(){tone(41,3,"sine",0.11,38);tone(62,3,"sine",0.05,58);},
+  levelJack(){arp([392,523,659,784,1047,1319,1568,2093],0.4,"triangle",0.24,0.06);
+    noise(1.1,0.26,200,6000);tone(65,1.3,"sine",0.34,40);},
+  levelEnd(){arp([784,659,523,392],0.3,"sine",0.22,0.1);noise(0.5,0.1,200,3000);}
 };
 
 /* music: 5 keys, one per deck; tempo tracks excitement */
@@ -799,6 +848,17 @@ const launchRail=(()=>{
   return{pts:LAUNCH_PATH,seg,cum,total};
 })();
 
+/* ---------- THE THREE WARP GATES ----------
+   One per floor, in the open where a decent shot can reach them. Each one is a
+   hole to a different machine (03b-levels.js); after a visit it goes cold for
+   a while, so you cannot simply farm the room you like best. */
+scoops.push({x:250, y:2180,r:44,name:"SPIRAL GATE",kind:"warp",level:"spiral",
+             cool:0,lit:true,col:PU,deck:1,warp:true});
+scoops.push({x:1420,y:1560,r:44,name:"FORGE GATE", kind:"warp",level:"forge",
+             cool:0,lit:true,col:OR,deck:2,warp:true});
+scoops.push({x:262, y:900, r:44,name:"ABYSS GATE", kind:"warp",level:"deep",
+             cool:0,lit:true,col:GR,deck:3,warp:true});
+
 /* ---------- PORTALS ---------- */
 portals.push({a:{x:830,y:2126},b:{x:1512,y:1440},r:40,cool:0,col:MG,name:"WARP I"});
 portals.push({a:{x:1544,y:930}, b:{x:624,y:158}, r:40,cool:0,col:CY,name:"WARP II"});
@@ -821,6 +881,477 @@ flippers.forEach(f=>{DECK_FLIP_Y[f.deck]=f.py;});
 
 const scoopBy=n=>scoops.find(s=>s.name===n);
 const railBy=n=>rails.find(r=>r.name===n);
+/* ============================================================
+   p3b :: THE WARP LEVELS — three machines behind three holes
+   ------------------------------------------------------------
+   The tower is built once at load into the arrays in 03-table.js. Rather than
+   parameterise every one of those arrays through the physics and the renderer,
+   a warp SWAPS THEIR CONTENTS: the array objects stay identical, so every
+   `for(const w of walls)` in the codebase keeps working untouched, and the
+   tower's live state (dropped targets, broken bricks, lit rollovers) survives
+   the round trip because the objects themselves are stashed, not copied.
+   ============================================================ */
+
+const WORLD_ARRAYS=[walls,posts,bumpers,slings,flippers,rollovers,scoops,
+                    spinners,rails,portals,magnets,bricks,dropBanks,decor,
+                    kickbacks,lanes];
+
+function snapshotWorld(){
+  return{arr:WORLD_ARRAYS.map(a=>a.slice()),pw:PW,ph:PH,decks:DECKS,
+         flipY:DECK_FLIP_Y.slice(),cam:{x:cam.x,y:cam.y,view:cam.view}};
+}
+function restoreWorld(st){
+  WORLD_ARRAYS.forEach((a,i)=>{a.length=0;for(const o of st.arr[i])a.push(o);});
+  PW=st.pw;PH=st.ph;DECKS=st.decks;
+  for(let i=0;i<DECK_FLIP_Y.length;i++)DECK_FLIP_Y[i]=st.flipY[i]||0;
+  rebuildPaths();
+}
+function clearWorld(){for(const a of WORLD_ARRAYS)a.length=0;}
+
+/* the tower, exactly as built, kept so a warp can put it back */
+let towerStash=null;
+
+/* ============================================================
+   Shared level construction helpers
+   ============================================================ */
+function ringWall(cx,cy,r,from,to,n,e){
+  let px=cx+r*Math.cos(from),py=cy+r*Math.sin(from);
+  for(let i=1;i<=n;i++){
+    const a=lerp(from,to,i/n);
+    const x=cx+r*Math.cos(a),y=cy+r*Math.sin(a);
+    W(px,py,x,y,e===undefined?0.5:e);px=x;py=y;
+  }
+}
+/* Every level needs a pair of flippers you can actually aim with. Same blade
+   length and same drain gap as the tower, so the muscle memory carries over. */
+function levelFlippers(cx,py,gap,len){
+  const LX=cx-gap,RX=cx+gap;
+  flippers.push({px:LX,py,len,a:0.42,rest:0.42,up:-0.62,dir:1,omega:0,key:false,deck:0,side:0,main:true});
+  flippers.push({px:RX,py,len,a:Math.PI-0.42,rest:Math.PI-0.42,up:Math.PI+0.62,dir:-1,omega:0,key:false,deck:0,side:1,main:true});
+  slings.push({ax:LX-206,ay:py-300,bx:LX-46,by:py-200,cx:LX-192,cy:py-162,fx:0,deck:0});
+  slings.push({ax:RX+206,ay:py-300,bx:RX+46,by:py-200,cx:RX+192,cy:py-162,fx:0,deck:0});
+  /* guides that release the ball OVER the blade, never onto the pivot */
+  W(LX-296,py-250, LX-258,py-104, 0.34);
+  W(RX+296,py-250, RX+258,py-104, 0.34);
+  W(LX-258,py-104, LX+70,py-42, 0.26);
+  W(RX+258,py-104, RX-70,py-42, 0.26);
+  DECK_FLIP_Y[0]=py;
+}
+
+/* ============================================================
+   LEVEL 1 :: THE HYPNOSPIRAL — a spinning eye you fall into
+   ------------------------------------------------------------
+   A circular arena. Three rings of bumpers orbit at different rates and
+   directions, gravity is light, and a tangential "swirl" force curls
+   everything into the same rotation as the background. The ball does not fall
+   so much as circle the drain of a very large, very slow whirlpool.
+   ============================================================ */
+let spiralRings=[];
+function buildSpiral(L){
+  const w=L.pw,h=L.ph,cx=w/2,cy=h*0.42,R=690;
+  /* One circular wall with a gap at the bottom for the drain — deliberately a
+     SINGLE wall system. The first version had a bowl and a set of aprons that
+     crossed each other near the bottom right, and the ball wedged in the V
+     they made. One closed curve cannot cross itself. */
+  const gapA=1.955, gapB=1.187+Math.PI*2;      // 112 deg round to 68 deg
+  ringWall(cx,cy,R,gapA,gapB,46,0.54);
+  const lx=cx+R*Math.cos(gapA), ly=cy+R*Math.sin(gapA);
+  const rx=cx+R*Math.cos(gapB), ry=cy+R*Math.sin(gapB);
+  W(lx,ly, cx-320,h-190, 0.42);  W(cx-320,h-190, cx-136,h-6, 0.24);
+  W(rx,ry, cx+320,h-190, 0.42);  W(cx+320,h-190, cx+136,h-6, 0.24);
+  levelFlippers(cx,h-208,250,180);
+
+  /* THE EYE — the whole point of the room */
+  scoops.push({x:cx,y:cy,r:64,name:"THE EYE",kind:"eye",cool:0,lit:true,col:PU,deck:0});
+  for(let i=0;i<8;i++){
+    const a=i/8*Math.PI*2;
+    P(cx+Math.cos(a)*130,cy+Math.sin(a)*130,13,i%2?CY:MG);
+  }
+  /* three orbiting rings, alternating direction */
+  spiralRings=[
+    {r:250,n:4,sp: 0.55,ph:0,   col:CY},
+    {r:410,n:6,sp:-0.36,ph:0.4, col:MG},
+    {r:560,n:8,sp: 0.22,ph:0.9, col:PU}
+  ];
+  for(const ring of spiralRings){
+    ring.items=[];
+    for(let i=0;i<ring.n;i++){
+      const b={x:cx,y:cy,r:38,deck:0,col:ring.col,fx:0};
+      bumpers.push(b);ring.items.push(b);
+    }
+  }
+  /* rollovers around the upper rim */
+  for(let i=0;i<5;i++){
+    const a=Math.PI*1.16+i*(Math.PI*0.68/4);
+    rollovers.push({x:cx+Math.cos(a)*(R-70),y:cy+Math.sin(a)*(R-70),r:26,lit:false,cool:-9,id:i,deck:0});
+  }
+  makeRail({name:"THE COIL",short:"COIL",col:MG,deck:0,
+    mouth:{x:cx+R*0.72,y:cy+R*0.42,r:50},minSpd:700,exitBoost:0.95,
+    pts:(()=>{const q=[];for(let i=0;i<=16;i++){
+      const a=0.42+i/16*5.1, rr=R*0.9-i*7;
+      q.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}return q;})()});
+  spinners.push({x:cx-R*0.62,y:cy+R*0.5,r:40,ang:0,vel:0,cool:-9,col:CY,deck:0,name:"SPIN"});
+  spinners.push({x:cx+R*0.62,y:cy+R*0.5,r:40,ang:0,vel:0,cool:-9,col:MG,deck:0,name:"SPIN"});
+  decor.push({x:cx,y:cy+250,t:"THE HYPNOSPIRAL",s:54,c:PU,a:0.10});
+  decor.push({x:cx,y:cy+312,t:"DO NOT LOOK DOWN",s:22,c:CY,a:0.12});
+}
+function spiralTick(dt,L){
+  const cx=PW/2,cy=PH*0.42;
+  for(const ring of spiralRings){
+    ring.ph+=ring.sp*dt;
+    ring.items.forEach((b,i)=>{
+      const a=ring.ph+i/ring.n*Math.PI*2;
+      b.x=cx+Math.cos(a)*ring.r;
+      b.y=cy+Math.sin(a)*ring.r;
+    });
+  }
+}
+
+/* ============================================================
+   LEVEL 2 :: THE FORGEWORKS — climb, the floor is coming up
+   ------------------------------------------------------------
+   A tall shaft under heavy gravity. Molten metal rises from the bottom the
+   whole time you are here; touching it throws you back up in a shower of
+   sparks and costs you seconds. Hitting the VENT at the top drives it back
+   down. The timer IS the lava — you can see exactly how long you have left.
+   ============================================================ */
+let lavaY=0, lavaTarget=0, pistons=[];
+function buildForge(L){
+  const w=L.pw,h=L.ph,cx=w/2;
+  W(50,60,50,h-330,0.46); W(w-50,60,w-50,h-330,0.46);
+  W(50,60,w-50,60,0.5);
+  W(50,h-330, cx-300,h-176,0.4);  W(cx-300,h-176, cx-130,h-6,0.24);
+  W(w-50,h-330, cx+300,h-176,0.4);W(cx+300,h-176, cx+130,h-6,0.24);
+  levelFlippers(cx,h-198,238,178);
+
+  /* the vent at the top — three hits and the shaft cools */
+  scoops.push({x:cx,y:170,r:58,name:"THE VENT",kind:"vent2",cool:0,lit:true,col:OR,deck:0});
+  /* A 2,200px shaft under 1.3x gravity: without a hoist the top of it is
+     scenery. Catch the rail from the lower half and it carries you up. */
+  makeRail({name:"CHAIN HOIST",short:"HOIST",col:YL,deck:0,
+    mouth:{x:w-190,y:1500,r:50},minSpd:640,exitBoost:0.75,
+    pts:[[w-190,1500],[w-110,1240],[w-120,940],[w-210,660],[w-330,420],[cx+120,300]]});
+  makeRail({name:"SLAG CHUTE",short:"CHUTE",col:RD,deck:0,
+    mouth:{x:190,y:820,r:48},minSpd:520,exitBoost:1.15,
+    pts:[[190,820],[110,1120],[130,1500],[260,1780],[cx-90,1960]]});
+  /* stepped ledges to climb, each with a bumper to launch off */
+  const steps=[[300,760],[900,640],[280,1120],[920,1000],[600,420]];
+  for(let i=0;i<steps.length;i++){
+    const[sx,sy]=steps[i];
+    W(sx-130,sy,sx+130,sy-26,0.62);
+    bumpers.push({x:sx,y:sy-92,r:44,deck:0,col:i%2?OR:YL,fx:0});
+  }
+  /* pistons: bars that slam out of the walls on a cycle */
+  pistons=[
+    {x:50, y:900, w:210,h:44,ph:0,   sp:0.75,dir:1,fx:0},
+    {x:w-50,y:1240,w:210,h:44,ph:1.6,sp:0.62,dir:-1,fx:0},
+    {x:50, y:1560,w:210,h:44,ph:3.1, sp:0.9, dir:1,fx:0}
+  ];
+  for(let i=0;i<4;i++)
+    rollovers.push({x:200+i*(w-400)/3,y:h-560,r:26,lit:false,cool:-9,id:i,deck:0});
+  dropBanks.push({name:"SLAG",deck:0,targets:[0,1,2].map(i=>({
+    x:cx-110+i*110,y:1760,w:74,h:20,down:false,col:RD}))});
+  spinners.push({x:cx,y:2000,r:40,ang:0,vel:0,cool:-9,col:OR,deck:0,name:"BELLOWS"});
+  decor.push({x:cx,y:h*0.62,t:"THE FORGEWORKS",s:50,c:OR,a:0.10});
+  decor.push({x:cx,y:h*0.62+58,t:"CLIMB",s:26,c:RD,a:0.13});
+  lavaY=h+120; lavaTarget=h+120;
+}
+function forgeTick(dt,L){
+  /* the lava climbs the whole visit; the VENT pushes it back down */
+  lavaTarget-=(PH*0.92/L.dur)*dt;
+  lavaY=lerp(lavaY,lavaTarget,1-Math.pow(0.02,dt));
+  for(const p of pistons){
+    p.ph+=dt*p.sp;
+    const t=(Math.sin(p.ph*Math.PI*2)+1)/2;
+    p.ext=Math.pow(t,3)*p.w;
+    if(p.fx>0)p.fx-=dt*3;
+  }
+  for(const b of balls){
+    if(b.ghost||b.rail||b.scoop||b.gone)continue;
+    /* pistons shove */
+    for(const p of pistons){
+      if(p.ext<12)continue;
+      const x0=p.dir>0?p.x:p.x-p.ext, x1=p.dir>0?p.x+p.ext:p.x;
+      if(b.x>x0-b.r&&b.x<x1+b.r&&Math.abs(b.y-p.y)<p.h/2+b.r){
+        b.vx=p.dir*2100;b.vy-=340;
+        b.x=p.dir>0?x1+b.r+2:x0-b.r-2;
+        p.fx=1;SND.forgePiston();spark(b.x,b.y,10,OR,300);
+        addScore(3200,b.x,b.y,{col:OR,size:20});
+      }
+    }
+    /* the molten floor: a heat blast, not a death */
+    if(b.y>lavaY-b.r){
+      b.y=lavaY-b.r-4;
+      b.vy=-Math.max(2400,Math.abs(b.vy)*0.9);
+      b.vx+=rand(-500,500);
+      lavaTarget=Math.min(PH+120,lavaTarget+120);
+      SND.forgeLava();shake(9);flash(0.28,RD);
+      for(let i=0;i<16;i++)parts.push({x:b.x+rand(-60,60),y:lavaY,vx:rand(-260,260),
+        vy:-rand(200,800),life:rand(.3,.9),max:.9,col:Math.random()<.5?OR:YL,size:rand(2,6)});
+    }
+  }
+}
+
+/* ============================================================
+   LEVEL 3 :: THE DEEP — everything slows down
+   ------------------------------------------------------------
+   A third of normal gravity with real drag, so the ball drifts rather than
+   drops and you have time to think about a shot for once. Standing currents
+   push it around the room, and the jellyfish breathe: their collision radius
+   swells and shrinks, so the same shot is not the same shot twice.
+   ============================================================ */
+let jellies=[], currents=[], pearls=[];
+function buildDeep(L){
+  const w=L.pw,h=L.ph,cx=w/2;
+  W(50,50,w-50,50,0.42);
+  W(50,50,50,h-330,0.42); W(w-50,50,w-50,h-330,0.42);
+  /* the walls turn into the aprons rather than meeting them at an angle */
+  W(50,h-330, cx-330,h-176,0.4);  W(cx-330,h-176, cx-136,h-6,0.24);
+  W(w-50,h-330, cx+330,h-176,0.4);W(cx+330,h-176, cx+136,h-6,0.24);
+  levelFlippers(cx,h-198,246,182);
+
+  scoops.push({x:cx,y:250,r:50,name:"THE MAW",kind:"maw",cool:0,lit:true,col:GR,deck:0});
+  /* jellyfish — bumpers that breathe */
+  jellies=[];
+  const spots=[[330,560],[cx,760],[w-330,560],[430,1050],[w-430,1050],[cx,1240]];
+  spots.forEach((sp,i)=>{
+    const b={x:sp[0],y:sp[1],r:46,r0:46,deck:0,col:i%2?GR:IC,fx:0,ph:i*1.1};
+    bumpers.push(b);jellies.push(b);
+  });
+  /* pearls: collect all eight and the room pays out */
+  pearls=[];
+  for(let i=0;i<6;i++){
+    const a=i/6*Math.PI*2+0.4;
+    const r={x:cx+Math.cos(a)*(w*0.26),y:h*0.44+Math.sin(a)*(h*0.20),
+             r:46,lit:false,cool:-9,id:i,deck:0,pearl:true};
+    rollovers.push(r);pearls.push(r);
+  }
+  makeRail({name:"THE UPWELL",short:"RISE",col:IC,deck:0,
+    mouth:{x:w-180,y:h*0.62,r:52},minSpd:420,exitBoost:0.7,
+    pts:[[w-180,h*0.62],[w-110,h*0.44],[w-190,h*0.24],[cx+160,h*0.14]]});
+  /* standing currents: a coarse vector field you can read off the background */
+  currents=[
+    {x:cx*0.55,y:h*0.34,r:400,fx: 620,fy:-260},
+    {x:cx*1.45,y:h*0.34,r:400,fx:-620,fy:-260},
+    {x:cx,     y:h*0.70,r:460,fx:   0,fy:-520},
+    {x:cx*0.5, y:h*0.78,r:340,fx: 460,fy: 160},
+    {x:cx*1.5, y:h*0.78,r:340,fx:-460,fy: 160}
+  ];
+  spinners.push({x:150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
+  spinners.push({x:w-150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
+  decor.push({x:cx,y:h*0.56,t:"THE DEEP",s:64,c:GR,a:0.09});
+  decor.push({x:cx,y:h*0.56+64,t:"NO HURRY DOWN HERE",s:24,c:IC,a:0.12});
+}
+function deepTick(dt,L){
+  for(const j of jellies){
+    j.ph+=dt*1.15;
+    j.r=j.r0*(1+0.24*Math.sin(j.ph));
+  }
+  for(const b of balls){
+    if(b.ghost||b.rail||b.scoop||b.gone)continue;
+    for(const c of currents){
+      const d=dist(b.x,b.y,c.x,c.y);
+      if(d>c.r)continue;
+      const k=(1-d/c.r)*dt;
+      b.vx+=c.fx*k;b.vy+=c.fy*k;
+    }
+  }
+}
+
+/* ============================================================
+   The registry
+   ============================================================ */
+const LEVELS={
+  spiral:{
+    id:"spiral", name:"THE HYPNOSPIRAL", short:"SPIRAL", gate:"SPIRAL GATE",
+    col:PU, col2:CY, dark:"#0b0326", hue:"rgba(178,107,255,",
+    pw:1560, ph:1780, mult:6, dur:52,
+    grav:0.58, drag:0.03, swirl:520,
+    goal:3, goalText:"HIT THE EYE",
+    jackpot:900000,
+    build:buildSpiral, tick:spiralTick,
+    voice:{
+      bumper(n){tone(262*Math.pow(1.5,n%3),0.26,"sine",0.24,undefined);
+        tone(524*Math.pow(1.5,n%3),0.16,"triangle",0.1);},
+      sling(){sweep(900,300,0.2,0.2,"sine");},
+      roll(){tone(1568,0.14,"sine",0.2,2093);},
+      target(){tone(330,0.2,"sine",0.24,660);}
+    }
+  },
+  forge:{
+    id:"forge", name:"THE FORGEWORKS", short:"FORGE", gate:"FORGE GATE",
+    col:OR, col2:RD, dark:"#1c0a02", hue:"rgba(255,154,31,",
+    pw:1180, ph:2200, mult:7, dur:48,
+    grav:1.32, drag:0, swirl:0,
+    goal:3, goalText:"HIT THE VENT",
+    jackpot:1100000,
+    build:buildForge, tick:forgeTick,
+    voice:{
+      bumper(n){tone(110+n*30,0.16,"square",0.26,60+n*20);noise(0.05,0.2,1200,6000);},
+      sling(){noise(0.09,0.4,700,4000);tone(150,0.07,"square",0.2,80);},
+      roll(){tone(440,0.07,"square",0.2,660);},
+      target(){SND.forgeHit();}
+    }
+  },
+  deep:{
+    id:"deep", name:"THE DEEP", short:"DEEP", gate:"ABYSS GATE",
+    col:GR, col2:IC, dark:"#02171a", hue:"rgba(57,255,106,",
+    pw:1520, ph:1900, mult:8, dur:56,
+    grav:0.34, drag:0.34, swirl:0,
+    goal:6, goalText:"COLLECT THE PEARLS",
+    jackpot:1400000,
+    build:buildDeep, tick:deepTick,
+    voice:{
+      bumper(n){tone(392+n*80,0.34,"sine",0.2,196+n*40);tone(1568,0.1,"sine",0.06);},
+      sling(){noise(0.16,0.16,300,1400);tone(180,0.14,"sine",0.16,90);},
+      roll(){SND.deepPop();},
+      target(){tone(587,0.3,"sine",0.22,880);}
+    }
+  }
+};
+const LEVEL_ORDER=["spiral","forge","deep"];
+
+/* ============================================================
+   WARPING — the transition, the visit, and the way home
+   ============================================================ */
+/* where you arrive, and the gate you came in through */
+const LEVEL_ENTRY={
+  spiral:()=>({x:PW/2-400,y:PH*0.20,vx: 900,vy:  240}),
+  forge: ()=>({x:PW*0.26, y:320,    vx: 700,vy:  380}),
+  deep:  ()=>({x:PW*0.24, y:PH*0.26,vx: 620,vy: -160})
+};
+let warpGate=null;                 // the tower scoop we left through
+let gateCool={spiral:0,forge:0,deep:0};
+const GATE_COOLDOWN=34;
+
+function warpAvailable(id){return !level&&warpT<=0&&gateCool[id]<=0;}
+
+/* stage 1: the room folds in on itself */
+function warpBegin(id,gateScoop){
+  if(warpT>0)return;
+  warpTo=id;warpDir=1;warpT=0.5;
+  warpGate=gateScoop||null;
+  for(const b of balls){b.scoop=null;b.hold=undefined;b.magnet=null;b.rail=null;}
+  SND.warpCharge();
+  flash(0.5,LEVELS[id].col);shake(14);
+  announce("WARPING → "+LEVELS[id].name,LEVELS[id].col,true);
+}
+/* stage 2: the swap itself, at the darkest point of the transition */
+function enterLevel(id){
+  const L=LEVELS[id];
+  towerStash=snapshotWorld();
+  clearWorld();
+  PW=L.pw;PH=L.ph;
+  DECKS=[{id:0,name:L.name,short:L.short,y0:0,y1:L.ph,mult:L.mult,
+          col:L.col,hue:L.hue,dark:L.dark}];
+  for(let i=0;i<DECK_FLIP_Y.length;i++)DECK_FLIP_Y[i]=0;
+  L.build(L);
+  rebuildPaths();
+
+  level=L;voice=L.voice||null;
+  gravMul=L.grav;dragMul=L.drag;swirl=L.swirl||0;
+  levelT=L.dur;levelProg=0;levelGoal=L.goal;levelJack=L.jackpot;levelDone=false;
+  levelSaves=2;
+
+  for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
+  const e=LEVEL_ENTRY[id]();
+  const b=spawnBall(e.x,e.y,e.vx,e.vy);
+  b.deck=0;b.prevDeck=0;
+  ballInPlunger=false;
+  cam.x=PW/2;cam.y=PH*0.4;cam.view=Math.max(PH*0.6,900);
+  cam.tx=cam.x;cam.ty=cam.y;cam.tview=cam.view;
+  SND.warpIn();
+  announce(L.name,L.col,true);
+  toast(L.goalText+"  —  "+shortNum(L.jackpot),L.col2,"◆");
+}
+/* stage 3: back up the hole you fell down */
+function leaveLevel(paid){
+  if(!level)return;
+  const L=level;
+  gateCool[L.id]=GATE_COOLDOWN;
+  level=null;voice=null;
+  gravMul=1;dragMul=0;swirl=0;
+  restoreWorld(towerStash);
+  towerStash=null;
+
+  for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
+  const g=warpGate&&scoopBy(warpGate)||null;
+  const x=g?g.x:830, y=g?g.y:2200;
+  const b=spawnBall(x,y-30,rand(-320,320),-rand(1500,2100));
+  b.deck=deckAt(b.y).id;b.prevDeck=b.deck;
+  ballInPlunger=false;
+  ballSaveT=Math.max(ballSaveT,6);
+  cam.x=x;cam.y=y;cam.tx=x;cam.ty=y;
+  SND.warpOut();
+  if(paid)announce("BACK FROM "+L.short,L.col,false);
+  else{announce("THE "+L.short+" SPAT YOU OUT",L.col2,false);SND.levelEnd();}
+}
+function warpExit(paid){
+  if(!level||warpT>0)return;
+  warpDir=-1;warpT=0.5;warpTo=null;
+  flash(0.45,level.col);shake(12);
+}
+
+/* the objective, scored */
+function levelScore(){
+  levelProg++;
+  const L=level;
+  if(levelProg<levelGoal){
+    const p=addScore(Math.round(L.jackpot*0.16),PW/2,PH*0.4,{col:L.col2,size:30});
+    announce(L.goalText+"  "+levelProg+"/"+levelGoal,L.col2,true);
+    floatText(PW/2,PH*0.4-60,"+"+shortNum(p),L.col2,26);
+    return;
+  }
+  if(levelDone){
+    const p=addScore(Math.round(L.jackpot*0.4),PW/2,PH*0.4,{col:YL,size:34});
+    announce("SUPER "+L.short+" +"+shortNum(p),YL,true);
+    return;
+  }
+  levelDone=true;
+  const p=addScore(L.jackpot,PW/2,PH*0.4,{col:YL,size:46});
+  announce(L.short+" JACKPOT  +"+shortNum(p),YL,true);
+  SND.levelJack();flash(0.7,YL);shake(20);
+  stats.warps=(stats.warps||0)+1;
+  levelT=Math.max(levelT,14);            // a victory lap
+  unlock("warped","THROUGH THE LOOKING GLASS","Cleared a warp machine");
+}
+
+/* per-frame: transition stages, the visit clock, the room's own animation */
+function levelTick(dt){
+  for(const k in gateCool)if(gateCool[k]>0)gateCool[k]-=dt;
+
+  if(warpT>0){
+    warpT-=dt;
+    if(warpT<=0){
+      if(warpDir===1&&warpTo){enterLevel(warpTo);warpTo=null;warpDir=2;warpT=0.42;}
+      else if(warpDir===-1){leaveLevel(true);warpDir=2;warpT=0.42;}
+      else{warpDir=0;warpT=0;}
+    }
+    return;
+  }
+  if(!level)return;
+  levelT-=dt;
+  level.tick(dt,level);
+  if(levelT<=0){warpExit(false);return;}
+  if(levelT<6&&Math.floor(levelT+dt)!==Math.floor(levelT))SND.tick();
+}
+/* The tower's drain rule does not apply down here. A warp is a reward, so the
+   room hands the ball back twice before it gives up on you — otherwise a bad
+   bounce ten seconds in wastes the whole visit and the gate's cooldown. */
+function levelDrain(){
+  if(!level)return false;
+  if(levelSaves>0){
+    levelSaves--;
+    const e=LEVEL_ENTRY[level.id]();
+    const b=spawnBall(e.x,e.y,e.vx,e.vy);
+    b.deck=0;b.prevDeck=0;
+    SND.save();flash(0.35,level.col2);
+    announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);
+    return true;
+  }
+  warpExit(false);
+  return true;
+}
 /* ============================================================
    p4 :: CAMERA + PHYSICS
    ============================================================ */
@@ -1126,9 +1657,19 @@ function physics(dt){
     }
 
     /* ---- free flight ---- */
-    b.vx+=(gravX()+windX)*dt;
-    b.vy+=gravY()*dt;
+    b.vx+=(gravX()*gravMul+windX)*dt;
+    b.vy+=gravY()*gravMul*dt;
     if(b.plasma>0)b.vy-=140*dt;                       // plasma balls float a touch
+    /* the warp levels bend the rules: the Deep is thick, the Spiral turns */
+    if(dragMul>0){const k=Math.pow(1-clamp(dragMul,0,0.95),dt*6);b.vx*=k;b.vy*=k;}
+    if(swirl!==0){
+      const cx=PW/2, cy=PH*0.46;
+      const dx=b.x-cx, dy=b.y-cy, d=Math.hypot(dx,dy);
+      if(d>40){
+        const f=swirl*clamp(1-d/(PW*0.62),0,1)*dt;
+        b.vx+=-dy/d*f; b.vy+= dx/d*f;
+      }
+    }
     const sp0=Math.hypot(b.vx,b.vy);
     if(sp0>VMAX){b.vx*=VMAX/sp0;b.vy*=VMAX/sp0;}
     b.x+=b.vx*dt;b.y+=b.vy*dt;
@@ -1289,7 +1830,7 @@ function physics(dt){
       b.vx*=-0.4;b.vy=Math.abs(b.vy)*0.4+120;
     }
     if(b.y>PH+30){
-      if(b.shield){
+      if(b.shield&&!level){
         b.shield=false;
         b.x=830;b.y=2500;b.vx=rand(-160,160);b.vy=-1900;
         announce("SHIELD SAVE!",GR,true);SND.save();flash(.4,GR);
@@ -1297,9 +1838,9 @@ function physics(dt){
         continue;
       }
       b.gone=true;
-      spark(b.x,PH-30,26,RD,320);
+      spark(b.x,PH-30,26,level?level.col:RD,320);
       balls.splice(bi,1);
-      onDrain(b);
+      if(!levelDrain())onDrain(b);
     }
   }
 }
@@ -1464,10 +2005,16 @@ function addStorm(v){
 
 /* ---------- switch bus (missions listen here) ---------- */
 function sw(kind,x,y,b){
-  mission.onSwitch&&mission.onSwitch(kind,x,y,b);
-  if(boss.active)boss.onSwitch&&boss.onSwitch(kind,x,y,b);
+  /* Missions and the boss belong to the tower. Down a warp hole they are
+     frozen, so a switch hit here must not feed them either. */
+  if(!level){
+    mission.onSwitch&&mission.onSwitch(kind,x,y,b);
+    if(boss.active)boss.onSwitch&&boss.onSwitch(kind,x,y,b);
+  }
   excite=clamp(excite+0.028,0,1);
 }
+/* light/darken a named tower scoop, safely — it is simply absent in a level */
+function litScoop(name,on){const s=scoopBy(name);if(s)s.lit=on;return s;}
 
 /* ============================================================
    EVENT HANDLERS
@@ -1532,16 +2079,41 @@ function onDropTarget(bank,t,b){
       announce(bank.type.toUpperCase()+" BANK! +"+shortNum(p),GR,true);
       SND.bank();flash(.4,GR);
       if(bank.type==="cryo"){magnets.forEach(m=>{if(m.name==="FORGE")m.lit=true;});announce("FORGE MAGNET LIT",OR,false);}
-      if(bank.type==="ion"){lockLit=true;scoopBy("LOCK").lit=true;announce("BALL LOCK LIT!",PU,true);SND.lock();}
+      if(bank.type==="ion"){lockLit=true;litScoop("LOCK",true);announce("BALL LOCK LIT!",PU,true);SND.lock();}
       bank.resetT=2;
     }
   }
 }
 function onRollover(r,b){
   SND.roll();ring(r.x,r.y,r.group==="crown"?YL:CY,8,60,3);
+  if(level){
+    /* down here a rollover is whatever the room says it is */
+    if(r.pearl&&!r.lit){
+      r.lit=true;
+      addScore(18000,r.x,r.y,{col:GR,size:22});
+      SND.deepPop();
+      const n=pearls.filter(q=>q.lit).length;
+      floatText(r.x,r.y-40,"PEARL "+n+"/"+pearls.length,GR,22);
+      levelScore();
+      if(n===pearls.length)announce("ALL PEARLS — NOW FEED THE MAW",GR,true);
+    }else{
+      addScore(6000*level.mult,r.x,r.y,{col:level.col2,size:20});
+      if(!r.lit){r.lit=true;
+        if(rollovers.filter(q=>!q.pearl).every(q=>q.lit)){
+          rollovers.forEach(q=>{if(!q.pearl)q.lit=false;});
+          const p=addScore(140000,r.x,r.y-50,{col:YL,size:30});
+          announce("LANES CLEARED  +"+shortNum(p),YL,true);SND.bank();
+        }
+      }
+    }
+    addSurge(0.01);
+    sw("rollover",r.x,r.y,b);
+    return;
+  }
   if(r.group==="crown"){
     const p=addScore(9000,r.x,r.y,{col:YL,size:24});
-    if(!scoopBy("ROD").lit){scoopBy("ROD").lit=true;floatText(r.x,r.y-34,"ROD LIT",IC,22);}
+    const rod=scoopBy("ROD");
+    if(rod&&!rod.lit){rod.lit=true;floatText(r.x,r.y-34,"ROD LIT",IC,22);}
     addStorm(0.06);
   }else if(r.group==="storm"){
     if(!stormLetters[r.id]){
@@ -1631,6 +2203,7 @@ function onPortal(b,p){
   sw("portal",b.x,b.y,b);
 }
 function onDeckChange(b,now,before){
+  if(level)return;                    // the warp rooms are a single floor
   visited[now]=true;
   if(now>before){
     SND.deckUp();
@@ -1675,8 +2248,44 @@ function resolveScoop(b){
     case "vent":    doVent(s,b); eject(rand(-260,260),-rand(1800,2300)); break;
     case "crown":   doCrown(s,b); eject(rand(-380,380),rand(700,1100)); break;
     case "rod":     doRod(s,b);   eject(rand(-420,420),rand(800,1200)); break;
+    case "warp":    doWarp(s,b);  return;                       // no eject — the room leaves
+    case "eye":     levelScore(); eject(rand(-520,520),rand(-1500,-900)); break;
+    case "vent2":   doForgeVent(b); eject(rand(-420,420),rand(900,1300)); break;
+    case "maw":     doMaw(s,b);   eject(rand(-300,300),rand(700,1000)); break;
     default:        eject(rand(-200,200),-rand(1600,2000));
   }
+}
+
+/* ---------- the warp holes ---------- */
+function doWarp(s,b){
+  if(!warpAvailable(s.level)){
+    /* dark gate: still worth something, just not a ride */
+    const p=addScore(24000,s.x,s.y,{col:"#6d7b96",size:22});
+    announce("GATE COLD  "+Math.ceil(gateCool[s.level])+"s",IC,false);
+    floatText(s.x,s.y-50,"+"+shortNum(p),IC,20);
+    return;
+  }
+  addScore(60000,s.x,s.y,{col:LEVELS[s.level].col,size:28});
+  warpBegin(s.level,s.name);
+}
+/* the FORGE vent also drives the lava back down the shaft */
+function doForgeVent(b){
+  lavaTarget=Math.min(PH+120,lavaTarget+PH*0.30);
+  SND.forgeHit();shake(10);
+  for(let i=0;i<14;i++)parts.push({x:PW/2+rand(-70,70),y:200,vx:rand(-300,300),
+    vy:rand(200,700),life:rand(.3,.8),max:.8,col:Math.random()<.5?OR:YL,size:rand(2,6)});
+  levelScore();
+}
+/* the DEEP's maw pays for whatever pearls you are carrying */
+/* the maw does not advance the objective — it BUYS the pearls off you, and
+   puts them back in the water so the room can pay out more than once */
+function doMaw(s,b){
+  const got=pearls.filter(p=>p.lit).length;
+  if(got===0){announce("BRING ME PEARLS",IC,false);return;}
+  const p=addScore(42000*got*got,s.x,s.y,{col:GR,size:26+got*3});
+  announce("SWALLOWED "+got+" PEARLS  +"+shortNum(p),GR,true);
+  SND.deepPearl();flash(0.3,GR);
+  pearls.forEach(q=>{q.lit=false;});
 }
 
 /* ---------- mystery ---------- */
@@ -1691,7 +2300,7 @@ const MYSTERY=[
   {w:8, f:(s)=>{kickLit=[true,true];ballSaveT=Math.max(ballSaveT,10);announce("KICKBACKS + BALL SAVE",GR,true);}},
   {w:6, f:(s)=>{surge=1;addSurge(0.01);announce("INSTANT SURGE!",GR,true);}},
   {w:5, f:(s)=>{const p=addScore(260000,s.x,s.y,{col:YL,size:40});announce("MEGA MYSTERY +"+shortNum(p),YL,true);flash(.6,YL);}},
-  {w:5, f:(s)=>{lockLit=true;scoopBy("LOCK").lit=true;announce("LOCK LIT!",PU,true);}},
+  {w:5, f:(s)=>{lockLit=true;litScoop("LOCK",true);announce("LOCK LIT!",PU,true);}},
   {w:4, f:(s)=>{frenzyT=Math.max(frenzyT,12);announce("INSTANT CHAOS!",MG,true);}}
 ];
 function triggerMystery(s,b){
@@ -1718,7 +2327,7 @@ function doLock(s,b,eject){
       eject(rand(-200,200),-rand(1500,1900));
       setTimeout(()=>{if(state==="PLAY")startMB(2);},420);
     }else{
-      scoopBy("LOCK").lit=false;
+      litScoop("LOCK",false);
       eject(rand(-260,260),-rand(1800,2300));
     }
   }else{
@@ -1766,7 +2375,7 @@ let crownHits=0;
 
 /* ---------- lightning rod ---------- */
 function doRod(s,b){
-  scoopBy("ROD").lit=false;
+  litScoop("ROD",false);
   const p=addScore(150000,s.x,s.y,{col:IC,size:36});
   announce("LIGHTNING ROD! +"+shortNum(p),IC,true);
   bolts.push({x:s.x,y0:60,y1:PH,t:0,life:.55,seed:Math.random()*999});
@@ -1902,7 +2511,7 @@ function endMission(win){
     if(missionsDone===1)unlock("firstblood","MISSION ONE","Completed your first mission");
     if(missionsDone>=4&&!bossReady&&!boss.active&&!boss.dead){
       bossReady=true;
-      scoopBy("CROWN").lit=true;
+      litScoop("CROWN",true);
       announce("THE STORM KING AWAKENS",RD,true);
       toast("SHOOT THE CROWN — THE KING IS AWAKE",RD,"☠");
       SND.bossRoar();flash(.6,RD);
@@ -1916,8 +2525,8 @@ function endMission(win){
   if(mission.data&&mission.data.ghost){const g=balls.indexOf(mission.data.ghost);if(g>=0)balls.splice(g,1);}
   gravTarget=Math.PI/2;
   mission.active=false;mission.scoreMul=1;mission.id=null;mission.onSwitch=null;mission.tick=null;
-  scoopBy("MISSION").lit=true;
-  scoopBy("VENT").lit=false;
+  litScoop("MISSION",true);
+  litScoop("VENT",false);
 }
 
 const MISSION_SETUP={
@@ -1973,7 +2582,7 @@ const MISSION_SETUP={
   },
   overload(){
     mission.data.heat=0;
-    scoopBy("VENT").lit=true;
+    litScoop("VENT",true);
     mission.scoreMul=2;
     mission.onSwitch=(k)=>{if(k==="bumper")mission.data.heat=Math.min(1,mission.data.heat+0.045);};
     mission.vent=()=>{
@@ -2029,7 +2638,7 @@ function startBoss(){
   toast("HIT THE KING — THE CROWN IS HIS HEART",RD,"☠");
   SND.bossRoar();flash(.9,RD);shake(26);camPunch(1);
   ballSaveT=Math.max(ballSaveT,10);
-  scoopBy("CROWN").lit=true;
+  litScoop("CROWN",true);
   boss.onSwitch=null;
   if(!mbActive)startMB(1);
 }
@@ -2127,6 +2736,7 @@ function cannonFire(){
   if(!cannon.loaded||!cannon.ball)return;
   const b=cannon.ball;
   const s=scoopBy("CANNON");
+  if(!s)return;
   cannon.loaded=false;cannon.ball=null;
   b.scoop=null;
   const spd=3400;
@@ -2274,8 +2884,8 @@ function endOfBallFinish(){
   dropBanks.forEach(bk=>{bk.targets.forEach(t=>t.up=true);bk.resetT=0;});
   bricks.forEach(br=>br.alive=true);
   scoops.forEach(s=>{s.cool=0;});
-  scoopBy("MISSION").lit=true;
-  scoopBy("LOCK").lit=false;
+  litScoop("MISSION",true);
+  litScoop("LOCK",false);
   cannon.loaded=false;cannon.ball=null;
   magnets.forEach(m=>{m.state="idle";m.t=0;m.ball=null;});
   savesThisBall=0;
@@ -2377,12 +2987,15 @@ function update(dt){
     }
   }
 
-  /* magnets, cannon, missions, boss, wizard */
+  /* magnets, cannon, missions, boss, wizard — all of it the tower's, so it
+     holds its breath while you are off in one of the warp rooms */
   magnetTick(dt);
-  cannonTick(dt);
-  missionTick(dt);
-  bossTick(dt);
-  wizardTick(dt);
+  if(!level){
+    cannonTick(dt);
+    missionTick(dt);
+    bossTick(dt);
+    wizardTick(dt);
+  }
 
   /* ball buffs decay */
   for(const b of balls){
@@ -2455,9 +3068,9 @@ function update(dt){
 
   /* orbs */
   orbTimer-=dt;
-  if(orbTimer<=0&&state==="PLAY"&&orbs.length<3){
+  if(orbTimer<=0&&state==="PLAY"&&orbs.length<3&&!level){
     orbTimer=rand(15,26);
-    const d=DECKS[irand(1,4)];
+    const d=DECKS[irand(1,Math.max(1,DECKS.length-1))];
     spawnOrb(rand(220,1440),rand(d.y0+120,d.y1-140));
   }
   for(let i=orbs.length-1;i>=0;i--){
@@ -2502,7 +3115,7 @@ function update(dt){
 
   /* weather */
   weather.gustT-=dt;
-  if(weather.gustT<=0&&state==="PLAY"){
+  if(weather.gustT<=0&&state==="PLAY"&&!level){
     weather.gustT=rand(14,30);
     if(Math.random()<0.55&&!boss.active){
       windTarget=rand(-560,560);windT=rand(2.4,4);
@@ -2554,8 +3167,11 @@ function update(dt){
 
   musicTick(dt);
 
-  /* physics */
-  if(state==="PLAY"&&!paused){
+  /* warp transitions and whatever room we are standing in */
+  levelTick(dt);
+
+  /* physics — frozen while the world is being swapped underneath us */
+  if(state==="PLAY"&&!paused&&warpT<=0){
     if(charging){
       plungerCharge+=dt*1.15*(plungerDir);
       if(plungerCharge>=1){plungerCharge=1;plungerDir=-1;}
@@ -2567,7 +3183,7 @@ function update(dt){
     const nsub=clamp(Math.ceil(vmaxNow*dt*ts/9),4,18);
     const sdt=dt*ts/nsub;
     for(let i=0;i<nsub;i++){stepFlippers(sdt);physics(sdt);}
-  }else if(state==="BONUS"){
+  }else if(state==="BONUS"&&!paused){
     endBonusTimer+=dt;
     const steps=14,per=endBonus/steps;
     if(endBonusStep<steps&&endBonusTimer>endBonusStep*0.09+0.35){
@@ -2653,9 +3269,9 @@ function glowStroke(fn,col,w,blur){
 }
 
 /* ---------- static geometry baked into Path2D once ---------- */
-const P_WALLS=new Path2D();
+let P_WALLS=new Path2D();
 for(const w of walls){P_WALLS.moveTo(w.x1,w.y1);P_WALLS.lineTo(w.x2,w.y2);}
-const P_RAIL=rails.map(R=>{
+let P_RAIL=rails.map(R=>{
   const p=new Path2D();
   p.moveTo(R.pts[0][0],R.pts[0][1]);
   for(let i=1;i<R.pts.length;i++)p.lineTo(R.pts[i][0],R.pts[i][1]);
@@ -2667,16 +3283,129 @@ const P_LAUNCH=(()=>{
   for(let i=1;i<LAUNCH_PATH.length;i++)p.lineTo(LAUNCH_PATH[i][0],LAUNCH_PATH[i][1]);
   return p;
 })();
-const P_SLING=slings.map(s=>{
+let P_SLING=slings.map(s=>{
   const p=new Path2D();
   p.moveTo(s.ax,s.ay);p.lineTo(s.bx,s.by);p.lineTo(s.cx,s.cy);p.closePath();
   return p;
 });
-const P_POSTS=(()=>{
+let P_POSTS=(()=>{
   const p=new Path2D();
   for(const q of posts){p.moveTo(q.x+q.r,q.y);p.arc(q.x,q.y,q.r,0,7);}
   return p;
 })();
+/* A warp swaps the world's contents, so the geometry baked at load has to be
+   baked again. Called from restoreWorld()/enterLevel() in 03b-levels.js. */
+function rebuildPaths(){
+  P_WALLS=(()=>{const p=new Path2D();
+    for(const w of walls){p.moveTo(w.x1,w.y1);p.lineTo(w.x2,w.y2);}return p;})();
+  P_RAIL=rails.map(r=>{const p=new Path2D();
+    p.moveTo(r.pts[0][0],r.pts[0][1]);
+    for(let i=1;i<r.pts.length;i++)p.lineTo(r.pts[i][0],r.pts[i][1]);return p;});
+  P_SLING=slings.map(s=>{const p=new Path2D();
+    p.moveTo(s.ax,s.ay);p.lineTo(s.bx,s.by);p.lineTo(s.cx,s.cy);p.closePath();return p;});
+  P_POSTS=(()=>{const p=new Path2D();
+    for(const q of posts){p.moveTo(q.x+q.r,q.y);p.arc(q.x,q.y,q.r,0,7);}return p;})();
+}
+
+/* ============================================================
+   THE WARP-ROOM BACKGROUNDS
+   Drawn in SCREEN space, before the world transform and before the play-window
+   clip: they are the room you are standing in, not something on the table, and
+   they should fill every pixel including the ones behind the HUD bands.
+   Each is cheap on purpose — a handful of fills and one stroked path set — so
+   a phone can afford them on top of a full playfield.
+   ============================================================ */
+function drawLevelBG(){
+  const t=timeSec, q=clamp(quality,0.35,1);
+  ctx.save();
+  const cx=VW/2, cy=playTop()+playH()*0.44;
+  const R=Math.hypot(VW,VH);
+
+  if(level.id==="spiral"){
+    /* The hypnosis, done with FILLS rather than long wide strokes: a pinwheel
+       of wedges turning one way, rings breathing outward through it the other.
+       The first version stroked twelve 50-point spirals a frame and cost more
+       than the whole playfield; a wedge is three points and a fill. */
+    ctx.translate(cx,cy);
+    ctx.rotate(t*0.19);
+    const wedges=Math.round(7*q)+5;
+    for(let i=0;i<wedges;i++){
+      const a0=i/wedges*Math.PI*2, a1=a0+Math.PI/wedges*0.92;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,R*0.8,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=`hsla(${(t*20+i*(360/wedges))%360},88%,58%,0.075)`;
+      ctx.fill();
+    }
+    ctx.rotate(-t*0.34);
+    const rings=Math.round(8*q)+3;
+    for(let i=0;i<rings;i++){
+      const p=(i/rings+((t*0.13)%1))%1;
+      const rr=p*R*0.72;
+      ctx.beginPath();ctx.arc(0,0,rr,0,7);
+      ctx.strokeStyle=`hsla(${(t*22+i*24)%360},96%,66%,${0.17*(1-p)})`;
+      ctx.lineWidth=2+10*(1-p);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const gg=ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.55);
+    const b=0.10+0.05*Math.sin(t*1.1);
+    gg.addColorStop(0,`rgba(178,107,255,${b})`);
+    gg.addColorStop(1,"rgba(178,107,255,0)");
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    return;
+  }
+
+  if(level.id==="forge"){
+    /* heat rising, and a furnace glow that brightens as the lava climbs */
+    const s2=camScale();
+    const lavaScreen=(lavaY-cam.y)*s2+playTop()+playH()/2;
+    const heat=clamp(1-(lavaScreen-playTop())/Math.max(playH(),1),0,1);
+    const bands=Math.round(8*q)+3;
+    for(let i=0;i<bands;i++){
+      const p=((i/bands)-((t*0.09)%1)+1)%1;
+      const y=VH-p*VH*1.15;
+      ctx.fillStyle=`rgba(255,${90+120*(1-p)|0},20,${0.055*(1-p)*(0.5+heat)})`;
+      ctx.fillRect(0,y,VW,VH*0.06);
+    }
+    const gg=ctx.createLinearGradient(0,VH,0,VH*0.25);
+    gg.addColorStop(0,`rgba(255,90,10,${0.20+heat*0.34})`);
+    gg.addColorStop(1,"rgba(255,60,0,0)");
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    ctx.restore();
+    return;
+  }
+
+  /* the deep: slow curtains of light and a drifting caustic net */
+  const curtains=Math.round(3*q)+2;
+  for(let i=0;i<curtains;i++){
+    const ph=t*0.19+i*1.7;
+    const x=(Math.sin(ph)*0.5+0.5)*VW;
+    const w2=VW*(0.13+0.07*Math.sin(ph*1.7));
+    const gg=ctx.createLinearGradient(x-w2,0,x+w2,0);
+    gg.addColorStop(0,"rgba(57,255,106,0)");
+    gg.addColorStop(0.5,`rgba(${i%2?57:120},255,${i%2?150:230},${0.07+0.03*Math.sin(ph*2.3)})`);
+    gg.addColorStop(1,"rgba(57,255,106,0)");
+    ctx.fillStyle=gg;ctx.fillRect(x-w2,0,w2*2,VH);
+  }
+  if(q>0.55){
+    ctx.strokeStyle="rgba(160,255,220,0.05)";ctx.lineWidth=1.4;
+    ctx.beginPath();
+    const step=140;
+    for(let y=0;y<VH+step;y+=step){
+      ctx.moveTo(0,y+Math.sin(t*0.7)*10);
+      for(let x=0;x<=VW;x+=90)
+        ctx.lineTo(x,y+Math.sin(t*0.7+x*0.012+y*0.01)*14);
+    }
+    ctx.stroke();
+  }
+  const gg2=ctx.createRadialGradient(cx,VH,0,cx,VH,VH*1.1);
+  gg2.addColorStop(0,"rgba(2,40,44,0.5)");
+  gg2.addColorStop(1,"rgba(2,23,26,0)");
+  ctx.fillStyle=gg2;ctx.fillRect(0,0,VW,VH);
+  ctx.restore();
+}
 
 function drawWorld(){
   const s=camScale();
@@ -2695,9 +3424,10 @@ function drawWorld(){
   const g=ctx.createLinearGradient(0,0,0,VH);
   const topD=deckAt(clamp(vy0,0,PH-1)),botD=deckAt(clamp(vy1,0,PH-1));
   g.addColorStop(0,topD.dark);
-  g.addColorStop(0.5,"#040317");
+  g.addColorStop(0.5,level?level.dark:"#040317");
   g.addColorStop(1,botD.dark);
   ctx.fillStyle=g;ctx.fillRect(0,0,VW,VH);
+  if(level)drawLevelBG();
   if(bgPulse>0.02){ctx.fillStyle=`rgba(25,230,255,${bgPulse*0.05})`;ctx.fillRect(0,0,VW,VH);}
 
   /* Clip the playfield to the play window. The HUD bands are laid out so no
@@ -2791,7 +3521,8 @@ function drawWorld(){
     }
   });
 
-  /* ---- launch lane tube ---- */
+  /* ---- launch lane tube (the tower's, and only the tower's) ---- */
+  if(!level){
   ctx.save();
   ctx.lineCap="round";ctx.lineJoin="round";
   ctx.strokeStyle="rgba(6,8,26,0.9)";ctx.lineWidth=64;
@@ -2813,6 +3544,8 @@ function drawWorld(){
     if(sk){ctx.font="900 14px 'Segoe UI'";ctx.fillText("SKILL",e.x+40,e.y+26);}
     ctx.restore();
   });
+
+  }
 
   /* ---- portals ---- */
   for(const p of portals){
@@ -2862,8 +3595,8 @@ function drawWorld(){
   /* ---- walls ---- */
   neonPath(P_WALLS,"rgba(25,230,255,0.92)",6,1);
 
-  /* ---- separator girders ---- */
-  for(const sp of SEPS){
+  /* ---- separator girders (tower only — a warp room is one floor) ---- */
+  for(const sp of (level?[]:SEPS)){
     if(sp.y<vy0-200||sp.y>vy1+200)continue;
     const col=DECKS[sp.deck].col;
     ctx.save();
@@ -2929,6 +3662,23 @@ function drawWorld(){
   /* ---- rollovers + lanes ---- */
   for(const r of rollovers){
     if(!vis(r.x,r.y,220))continue;
+    /* a warp room's rollovers are not STORM letters — a pearl is a pearl */
+    if(level){
+      const on=!!r.lit, c=r.pearl?(on?GR:IC):(on?level.col2:level.col);
+      ctx.save();
+      ctx.strokeStyle=c;ctx.lineWidth=on?5:3;ctx.globalAlpha=on?1:0.55;
+      if(on)glowOn(c,18);
+      ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,7);ctx.stroke();
+      if(r.pearl){
+        ctx.globalAlpha=on?1:0.35;
+        const g2=ctx.createRadialGradient(r.x-r.r*0.3,r.y-r.r*0.3,1,r.x,r.y,r.r*0.8);
+        g2.addColorStop(0,"#ffffff");g2.addColorStop(1,on?GR:"rgba(140,220,255,0.5)");
+        ctx.fillStyle=g2;
+        ctx.beginPath();ctx.arc(r.x,r.y,r.r*0.62,0,7);ctx.fill();
+      }
+      ctx.restore();
+      continue;
+    }
     const crown=r.group==="crown";
     const done=crown?false:stormLetters[r.id];
     const col=crown?YL:(done?GR:CY);
@@ -2983,8 +3733,35 @@ function drawWorld(){
   /* ---- scoops ---- */
   for(const sc of scoops){
     if(!vis(sc.x,sc.y,260))continue;
-    const on=sc.lit||sc.kind==="mystery"||sc.kind==="cannon";
+    let on=sc.lit||sc.kind==="mystery"||sc.kind==="cannon";
     if(sc.kind==="rod"&&boss.active)continue;
+    /* a warp gate is a hole, not a target: draw the tunnel down it, and go
+       grey while it is cooling so you can see at a glance where you can go */
+    if(sc.warp){
+      const ready=gateCool[sc.level]<=0;
+      on=ready;
+      const LC=LEVELS[sc.level];
+      ctx.save();ctx.translate(sc.x,sc.y);
+      for(let i=0;i<5;i++){
+        const p=((i/5)+((timeSec*(ready?0.55:0.14))%1))%1;
+        ctx.beginPath();ctx.arc(0,0,sc.r*(1.55-p*1.35),0,7);
+        ctx.strokeStyle=ready?LC.col:"rgba(140,150,180,0.5)";
+        ctx.globalAlpha=(ready?0.5:0.16)*(1-Math.abs(p-0.35));
+        ctx.lineWidth=3+7*(1-p);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+      ctx.rotate(-timeSec*(ready?1.7:0.4));
+      ctx.fillStyle=ready?LC.dark:"#0b0d18";
+      ctx.beginPath();ctx.arc(0,0,sc.r*0.82,0,7);ctx.fill();
+      ctx.restore();
+      if(!ready){
+        ctx.save();
+        ctx.fillStyle="rgba(160,175,205,0.75)";
+        ctx.font="900 20px 'Segoe UI'";ctx.textAlign="center";
+        ctx.fillText(Math.ceil(gateCool[sc.level])+"s",sc.x,sc.y+7);
+        ctx.restore();
+      }
+    }
     ctx.save();ctx.translate(sc.x,sc.y);
     ctx.fillStyle="rgba(0,0,0,0.6)";
     ctx.beginPath();ctx.arc(0,0,sc.r,0,7);ctx.fill();
@@ -2999,6 +3776,64 @@ function drawWorld(){
     ctx.fillStyle=on?sc.col:"rgba(150,160,200,0.5)";
     ctx.font="900 19px 'Segoe UI'";ctx.textAlign="center";
     ctx.fillText(sc.name,sc.x,sc.y+sc.r+28);
+    ctx.restore();
+  }
+
+  /* ---- the Forgeworks: molten floor and the pistons ---- */
+  if(level&&level.id==="forge"){
+    for(const p of pistons){
+      if(!p.ext||p.ext<2)continue;
+      const x0=p.dir>0?p.x:p.x-p.ext, w2=p.ext;
+      ctx.save();
+      ctx.fillStyle=p.fx>0?YL:"#7a3a10";
+      ctx.fillRect(x0,p.y-p.h/2,w2,p.h);
+      ctx.strokeStyle=p.fx>0?WH:OR;ctx.lineWidth=3;
+      if(GLOW>0)glowOn(OR,14);
+      ctx.strokeRect(x0,p.y-p.h/2,w2,p.h);
+      ctx.restore();
+    }
+    if(lavaY<vy1+200){
+      ctx.save();
+      /* only paint the molten part you can actually see — the shaft below it
+         can be a thousand pixels of gradient nobody is looking at */
+      const bot=Math.min(PH+180,vy1+160);
+      const lg=ctx.createLinearGradient(0,lavaY-90,0,bot);
+      lg.addColorStop(0,"rgba(255,60,0,0)");
+      lg.addColorStop(0.35,"rgba(255,110,10,0.65)");
+      lg.addColorStop(1,"rgba(255,220,90,0.95)");
+      ctx.fillStyle=lg;ctx.fillRect(0,lavaY-90,PW,bot-lavaY+90);
+      const surf=new Path2D(), body=new Path2D();
+      surf.moveTo(0,lavaY);body.moveTo(0,lavaY);
+      for(let x=0;x<=PW;x+=60){
+        const yy=lavaY+Math.sin(timeSec*3.1+x*0.012)*13+Math.sin(timeSec*1.7+x*0.03)*7;
+        surf.lineTo(x,yy);body.lineTo(x,yy);
+      }
+      body.lineTo(PW,bot);body.lineTo(0,bot);body.closePath();
+      ctx.fillStyle="rgba(255,150,30,0.55)";ctx.fill(body);
+      /* layered strokes, not shadowBlur — same rule as the rest of the game */
+      ctx.strokeStyle=OR;ctx.globalAlpha=0.3;ctx.lineWidth=16;ctx.stroke(surf);
+      ctx.globalAlpha=1;ctx.strokeStyle=YL;ctx.lineWidth=5;ctx.stroke(surf);
+      ctx.restore();
+    }
+  }
+  /* ---- the Deep: the currents you are drifting in ---- */
+  if(level&&level.id==="deep"&&quality>0.5){
+    ctx.save();
+    ctx.strokeStyle="rgba(160,255,220,0.16)";ctx.lineWidth=2.5;ctx.lineCap="round";
+    for(const c of currents){
+      const n=6;
+      for(let i=0;i<n;i++){
+        const a=i/n*Math.PI*2+timeSec*0.3;
+        const px=c.x+Math.cos(a)*c.r*0.62, py=c.y+Math.sin(a)*c.r*0.62;
+        const m=Math.hypot(c.fx,c.fy)||1;
+        const dx=c.fx/m*46, dy=c.fy/m*46;
+        const wob=Math.sin(timeSec*1.6+i)*10;
+        ctx.beginPath();
+        ctx.moveTo(px-dx,py-dy+wob);
+        ctx.quadraticCurveTo(px+wob,py,px+dx,py+dy+wob);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
@@ -3038,7 +3873,7 @@ function drawWorld(){
   /* ---- flippers ---- */
   for(const f of flippers){
     if(!vis(f.px,f.py,420))continue;
-    const col=f.main?YL:DECKS[f.deck].col;
+    const col=f.main?YL:(DECKS[f.deck]||DECKS[0]).col;
     glowStroke(()=>{ctx.beginPath();ctx.moveTo(f.px,f.py);ctx.lineTo(tipX(f),tipY(f));},
       f.key?WH:col,f.main?26:23,f.key?24:13);
     ctx.save();
@@ -3237,6 +4072,43 @@ function drawWorld(){
     ctx.fillStyle=g2;ctx.fillRect(0,fy,VW,fh);
   }
 
+  /* ---- the warp itself ----
+     The room does not cross-fade, it collapses: everything rushes toward the
+     hole, the screen goes to the destination's colour, then it blows back out
+     around the new machine. Drawn last so it covers the HUD too. */
+  if(warpT>0){
+    const dur=warpDir===2?0.42:0.5;
+    const k=clamp(1-warpT/dur,0,1);
+    const closing=warpDir!==2;
+    const a=closing?k:1-k;
+    const col=(warpTo&&LEVELS[warpTo])||level||{col:CY,col2:WH};
+    const cx=VW/2, cy=playTop()+playH()/2, R=Math.hypot(VW,VH);
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate((closing?1:-1)*k*3.4);
+    ctx.lineCap="round";
+    const N=Math.round(26*clamp(quality,0.4,1))+10;
+    for(let i=0;i<N;i++){
+      const ang=i/N*Math.PI*2;
+      const r0=R*(closing?(1-k):k)*0.5, r1=r0+R*0.55*a;
+      ctx.strokeStyle=i%2?col.col:(col.col2||WH);
+      ctx.globalAlpha=0.5*a;
+      ctx.lineWidth=3+22*a;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang)*r0,Math.sin(ang)*r0);
+      ctx.lineTo(Math.cos(ang)*r1,Math.sin(ang)*r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const gg=ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.62);
+    gg.addColorStop(0,`rgba(255,255,255,${a*0.95})`);
+    gg.addColorStop(0.35,`${col.col}`);
+    gg.addColorStop(1,"rgba(2,1,10,0)");
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle=gg;ctx.fillRect(0,0,VW,VH);
+    ctx.globalAlpha=1;
+  }
+
   /* ---- full-screen tints ---- */
   if(frenzyT>0){
     ctx.fillStyle=`rgba(255,43,214,${0.06+0.04*Math.sin(timeSec*24)})`;ctx.fillRect(0,0,VW,VH);
@@ -3391,7 +4263,7 @@ function drawHUD(){
   const narrow=VW<640&&!isShort();
   const short=isShort();
   const f=focusBall();
-  const curDeck=f?DECKS[f.deck]:DECKS[0];
+  const curDeck=(f&&DECKS[f.deck])||DECKS[0];
   const barH=topBarH();
 
   /* ---------- top band ---------- */
@@ -3430,8 +4302,19 @@ function drawHUD(){
   ctx.shadowBlur=0;
   ctx.font=`900 ${Math.round((short?12:13)*U)}px "Segoe UI"`;
   ctx.fillStyle=YL;
-  ctx.fillText("ALT x"+curDeck.mult+"   TOTAL x"+Math.round(totalMult(f?f.y:2600))+
-    (short?"   BALL "+Math.min(ballNum,BALLS_PER_GAME)+"/"+BALLS_PER_GAME:""),VW/2,cyT+(short?33:36)*U);
+  ctx.fillText(level
+    ? level.goalText+"  "+levelProg+"/"+levelGoal+"   "+Math.ceil(Math.max(levelT,0))+"s"
+    : "ALT x"+curDeck.mult+"   TOTAL x"+Math.round(totalMult(f?f.y:2600))+
+      (short?"   BALL "+Math.min(ballNum,BALLS_PER_GAME)+"/"+BALLS_PER_GAME:""),
+    VW/2,cyT+(short?33:36)*U);
+
+  /* how long the room will keep you — the bar is the clock */
+  if(level){
+    const bw=Math.round((short?150:200)*U), bx=VW/2-bw/2, by=cyT+(short?40:44)*U;
+    ctx.fillStyle="rgba(255,255,255,0.12)";ctx.fillRect(bx,by,bw,4*U);
+    ctx.fillStyle=levelT<8?RD:level.col2;
+    ctx.fillRect(bx,by,bw*clamp(levelT/level.dur,0,1),4*U);
+  }
 
   /* ball + storm */
   if(short){
@@ -3639,12 +4522,14 @@ function drawActionPanel(U,narrow,barH){
       ctx.fillRect(px+12*U,py+50*U,bw2*mission.data.heat,4*U);
     }
   }else{
-    const txt = cannon.loaded ? (IS_TOUCH?"TAP LAUNCH TO FIRE THE CANNON":"PRESS SPACE TO FIRE THE CANNON")
+    const txt = level ? (levelDone?"KEEP SCORING — "+level.short+" IS PAID":level.goalText.toUpperCase())
+      : cannon.loaded ? (IS_TOUCH?"TAP LAUNCH TO FIRE THE CANNON":"PRESS SPACE TO FIRE THE CANNON")
       : wizard.active ? "ASCENSION \u2014 EVERY SHOT SCORES"
       : bossReady&&!boss.active ? "THE CROWN IS LIT \u2014 SHOOT THE KING"
       : boss.active ? "HIT THE KING \u2014 THE CROWN IS HIS HEART"
       : "SHOOT THE MISSION SCOOP \u2014 STORM SPINE";
-    const col = cannon.loaded?YL : wizard.active?YL : (bossReady||boss.active)?RD : GR;
+    const col = level?(levelDone?YL:level.col2) : cannon.loaded?YL : wizard.active?YL
+      : (bossReady||boss.active)?RD : GR;
     ctx.textAlign="center";
     ctx.globalAlpha=(cannon.loaded||bossReady)?0.65+0.35*Math.sin(timeSec*8):0.85;
     let bfs=Math.round(13*U);
@@ -3683,6 +4568,7 @@ function meter(x,y,w,h,v,cols,label,hot){
 /* ---------- MINIMAP: small, cornered, out of the shot line ---------- */
 let minimapAlpha=1;
 function drawMinimap(U){
+  if(level)return;                    // one room, nothing to navigate
   const short=isShort();
   /* The minimap lives in the right margin, and the floating LAUNCH pad is also
      in the right margin, so it is sized against the pad's real rect: it fills
@@ -3909,8 +4795,8 @@ function newGame(){
   bricks.forEach(b=>b.alive=true);
   brickResetT=0;
   scoops.forEach(s=>{s.cool=0;});
-  scoopBy("MISSION").lit=true;scoopBy("LOCK").lit=false;
-  scoopBy("VENT").lit=false;scoopBy("CROWN").lit=true;scoopBy("ROD").lit=true;
+  litScoop("MISSION",true);litScoop("LOCK",false);
+  litScoop("VENT",false);litScoop("CROWN",true);litScoop("ROD",true);
   spinners.forEach(s=>{s.vel=0;s.acc=0;});
   gravAng=Math.PI/2;gravTarget=Math.PI/2;windX=0;windTarget=0;windT=0;
   slowmoT=0;excite=0;
@@ -4336,6 +5222,14 @@ window.__NSA__={
                      R:flippers.filter(f=>f.side===1&&f.key).length,
                      pointers:canvasPointers.size};},
   forceMission(id){startMission(id||pick(MISSION_LIST).id);},
+  warp(id){gateCool[id]=0;warpBegin(id,null);},
+  warpBack(){warpExit(true);},
+  levelInfo(){return level?{id:level.id,name:level.name,t:Math.round(levelT),
+    prog:levelProg,goal:levelGoal,done:levelDone,pw:PW,ph:PH,
+    balls:balls.length,walls:walls.length,bumpers:bumpers.length,
+    flippers:flippers.length}:null;},
+  gates(){return Object.assign({},gateCool);},
+  warping(){return warpT>0;},
   forceBoss(){missionsDone=4;bossReady=true;startBoss();},
   forceWizard(){startWizard();},
   hurtBoss(n){bossDamage(n||1,boss.x,boss.y);},

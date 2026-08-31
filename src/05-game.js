@@ -74,10 +74,16 @@ function addStorm(v){
 
 /* ---------- switch bus (missions listen here) ---------- */
 function sw(kind,x,y,b){
-  mission.onSwitch&&mission.onSwitch(kind,x,y,b);
-  if(boss.active)boss.onSwitch&&boss.onSwitch(kind,x,y,b);
+  /* Missions and the boss belong to the tower. Down a warp hole they are
+     frozen, so a switch hit here must not feed them either. */
+  if(!level){
+    mission.onSwitch&&mission.onSwitch(kind,x,y,b);
+    if(boss.active)boss.onSwitch&&boss.onSwitch(kind,x,y,b);
+  }
   excite=clamp(excite+0.028,0,1);
 }
+/* light/darken a named tower scoop, safely — it is simply absent in a level */
+function litScoop(name,on){const s=scoopBy(name);if(s)s.lit=on;return s;}
 
 /* ============================================================
    EVENT HANDLERS
@@ -142,16 +148,41 @@ function onDropTarget(bank,t,b){
       announce(bank.type.toUpperCase()+" BANK! +"+shortNum(p),GR,true);
       SND.bank();flash(.4,GR);
       if(bank.type==="cryo"){magnets.forEach(m=>{if(m.name==="FORGE")m.lit=true;});announce("FORGE MAGNET LIT",OR,false);}
-      if(bank.type==="ion"){lockLit=true;scoopBy("LOCK").lit=true;announce("BALL LOCK LIT!",PU,true);SND.lock();}
+      if(bank.type==="ion"){lockLit=true;litScoop("LOCK",true);announce("BALL LOCK LIT!",PU,true);SND.lock();}
       bank.resetT=2;
     }
   }
 }
 function onRollover(r,b){
   SND.roll();ring(r.x,r.y,r.group==="crown"?YL:CY,8,60,3);
+  if(level){
+    /* down here a rollover is whatever the room says it is */
+    if(r.pearl&&!r.lit){
+      r.lit=true;
+      addScore(18000,r.x,r.y,{col:GR,size:22});
+      SND.deepPop();
+      const n=pearls.filter(q=>q.lit).length;
+      floatText(r.x,r.y-40,"PEARL "+n+"/"+pearls.length,GR,22);
+      levelScore();
+      if(n===pearls.length)announce("ALL PEARLS — NOW FEED THE MAW",GR,true);
+    }else{
+      addScore(6000*level.mult,r.x,r.y,{col:level.col2,size:20});
+      if(!r.lit){r.lit=true;
+        if(rollovers.filter(q=>!q.pearl).every(q=>q.lit)){
+          rollovers.forEach(q=>{if(!q.pearl)q.lit=false;});
+          const p=addScore(140000,r.x,r.y-50,{col:YL,size:30});
+          announce("LANES CLEARED  +"+shortNum(p),YL,true);SND.bank();
+        }
+      }
+    }
+    addSurge(0.01);
+    sw("rollover",r.x,r.y,b);
+    return;
+  }
   if(r.group==="crown"){
     const p=addScore(9000,r.x,r.y,{col:YL,size:24});
-    if(!scoopBy("ROD").lit){scoopBy("ROD").lit=true;floatText(r.x,r.y-34,"ROD LIT",IC,22);}
+    const rod=scoopBy("ROD");
+    if(rod&&!rod.lit){rod.lit=true;floatText(r.x,r.y-34,"ROD LIT",IC,22);}
     addStorm(0.06);
   }else if(r.group==="storm"){
     if(!stormLetters[r.id]){
@@ -241,6 +272,7 @@ function onPortal(b,p){
   sw("portal",b.x,b.y,b);
 }
 function onDeckChange(b,now,before){
+  if(level)return;                    // the warp rooms are a single floor
   visited[now]=true;
   if(now>before){
     SND.deckUp();
@@ -285,8 +317,44 @@ function resolveScoop(b){
     case "vent":    doVent(s,b); eject(rand(-260,260),-rand(1800,2300)); break;
     case "crown":   doCrown(s,b); eject(rand(-380,380),rand(700,1100)); break;
     case "rod":     doRod(s,b);   eject(rand(-420,420),rand(800,1200)); break;
+    case "warp":    doWarp(s,b);  return;                       // no eject — the room leaves
+    case "eye":     levelScore(); eject(rand(-520,520),rand(-1500,-900)); break;
+    case "vent2":   doForgeVent(b); eject(rand(-420,420),rand(900,1300)); break;
+    case "maw":     doMaw(s,b);   eject(rand(-300,300),rand(700,1000)); break;
     default:        eject(rand(-200,200),-rand(1600,2000));
   }
+}
+
+/* ---------- the warp holes ---------- */
+function doWarp(s,b){
+  if(!warpAvailable(s.level)){
+    /* dark gate: still worth something, just not a ride */
+    const p=addScore(24000,s.x,s.y,{col:"#6d7b96",size:22});
+    announce("GATE COLD  "+Math.ceil(gateCool[s.level])+"s",IC,false);
+    floatText(s.x,s.y-50,"+"+shortNum(p),IC,20);
+    return;
+  }
+  addScore(60000,s.x,s.y,{col:LEVELS[s.level].col,size:28});
+  warpBegin(s.level,s.name);
+}
+/* the FORGE vent also drives the lava back down the shaft */
+function doForgeVent(b){
+  lavaTarget=Math.min(PH+120,lavaTarget+PH*0.30);
+  SND.forgeHit();shake(10);
+  for(let i=0;i<14;i++)parts.push({x:PW/2+rand(-70,70),y:200,vx:rand(-300,300),
+    vy:rand(200,700),life:rand(.3,.8),max:.8,col:Math.random()<.5?OR:YL,size:rand(2,6)});
+  levelScore();
+}
+/* the DEEP's maw pays for whatever pearls you are carrying */
+/* the maw does not advance the objective — it BUYS the pearls off you, and
+   puts them back in the water so the room can pay out more than once */
+function doMaw(s,b){
+  const got=pearls.filter(p=>p.lit).length;
+  if(got===0){announce("BRING ME PEARLS",IC,false);return;}
+  const p=addScore(42000*got*got,s.x,s.y,{col:GR,size:26+got*3});
+  announce("SWALLOWED "+got+" PEARLS  +"+shortNum(p),GR,true);
+  SND.deepPearl();flash(0.3,GR);
+  pearls.forEach(q=>{q.lit=false;});
 }
 
 /* ---------- mystery ---------- */
@@ -301,7 +369,7 @@ const MYSTERY=[
   {w:8, f:(s)=>{kickLit=[true,true];ballSaveT=Math.max(ballSaveT,10);announce("KICKBACKS + BALL SAVE",GR,true);}},
   {w:6, f:(s)=>{surge=1;addSurge(0.01);announce("INSTANT SURGE!",GR,true);}},
   {w:5, f:(s)=>{const p=addScore(260000,s.x,s.y,{col:YL,size:40});announce("MEGA MYSTERY +"+shortNum(p),YL,true);flash(.6,YL);}},
-  {w:5, f:(s)=>{lockLit=true;scoopBy("LOCK").lit=true;announce("LOCK LIT!",PU,true);}},
+  {w:5, f:(s)=>{lockLit=true;litScoop("LOCK",true);announce("LOCK LIT!",PU,true);}},
   {w:4, f:(s)=>{frenzyT=Math.max(frenzyT,12);announce("INSTANT CHAOS!",MG,true);}}
 ];
 function triggerMystery(s,b){
@@ -328,7 +396,7 @@ function doLock(s,b,eject){
       eject(rand(-200,200),-rand(1500,1900));
       setTimeout(()=>{if(state==="PLAY")startMB(2);},420);
     }else{
-      scoopBy("LOCK").lit=false;
+      litScoop("LOCK",false);
       eject(rand(-260,260),-rand(1800,2300));
     }
   }else{
@@ -376,7 +444,7 @@ let crownHits=0;
 
 /* ---------- lightning rod ---------- */
 function doRod(s,b){
-  scoopBy("ROD").lit=false;
+  litScoop("ROD",false);
   const p=addScore(150000,s.x,s.y,{col:IC,size:36});
   announce("LIGHTNING ROD! +"+shortNum(p),IC,true);
   bolts.push({x:s.x,y0:60,y1:PH,t:0,life:.55,seed:Math.random()*999});
@@ -512,7 +580,7 @@ function endMission(win){
     if(missionsDone===1)unlock("firstblood","MISSION ONE","Completed your first mission");
     if(missionsDone>=4&&!bossReady&&!boss.active&&!boss.dead){
       bossReady=true;
-      scoopBy("CROWN").lit=true;
+      litScoop("CROWN",true);
       announce("THE STORM KING AWAKENS",RD,true);
       toast("SHOOT THE CROWN — THE KING IS AWAKE",RD,"☠");
       SND.bossRoar();flash(.6,RD);
@@ -526,8 +594,8 @@ function endMission(win){
   if(mission.data&&mission.data.ghost){const g=balls.indexOf(mission.data.ghost);if(g>=0)balls.splice(g,1);}
   gravTarget=Math.PI/2;
   mission.active=false;mission.scoreMul=1;mission.id=null;mission.onSwitch=null;mission.tick=null;
-  scoopBy("MISSION").lit=true;
-  scoopBy("VENT").lit=false;
+  litScoop("MISSION",true);
+  litScoop("VENT",false);
 }
 
 const MISSION_SETUP={
@@ -583,7 +651,7 @@ const MISSION_SETUP={
   },
   overload(){
     mission.data.heat=0;
-    scoopBy("VENT").lit=true;
+    litScoop("VENT",true);
     mission.scoreMul=2;
     mission.onSwitch=(k)=>{if(k==="bumper")mission.data.heat=Math.min(1,mission.data.heat+0.045);};
     mission.vent=()=>{
@@ -639,7 +707,7 @@ function startBoss(){
   toast("HIT THE KING — THE CROWN IS HIS HEART",RD,"☠");
   SND.bossRoar();flash(.9,RD);shake(26);camPunch(1);
   ballSaveT=Math.max(ballSaveT,10);
-  scoopBy("CROWN").lit=true;
+  litScoop("CROWN",true);
   boss.onSwitch=null;
   if(!mbActive)startMB(1);
 }
@@ -737,6 +805,7 @@ function cannonFire(){
   if(!cannon.loaded||!cannon.ball)return;
   const b=cannon.ball;
   const s=scoopBy("CANNON");
+  if(!s)return;
   cannon.loaded=false;cannon.ball=null;
   b.scoop=null;
   const spd=3400;
@@ -884,8 +953,8 @@ function endOfBallFinish(){
   dropBanks.forEach(bk=>{bk.targets.forEach(t=>t.up=true);bk.resetT=0;});
   bricks.forEach(br=>br.alive=true);
   scoops.forEach(s=>{s.cool=0;});
-  scoopBy("MISSION").lit=true;
-  scoopBy("LOCK").lit=false;
+  litScoop("MISSION",true);
+  litScoop("LOCK",false);
   cannon.loaded=false;cannon.ball=null;
   magnets.forEach(m=>{m.state="idle";m.t=0;m.ball=null;});
   savesThisBall=0;

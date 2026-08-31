@@ -58,7 +58,7 @@ function drawHUD(){
   const narrow=VW<640&&!isShort();
   const short=isShort();
   const f=focusBall();
-  const curDeck=f?DECKS[f.deck]:DECKS[0];
+  const curDeck=(f&&DECKS[f.deck])||DECKS[0];
   const barH=topBarH();
 
   /* ---------- top band ---------- */
@@ -97,8 +97,19 @@ function drawHUD(){
   ctx.shadowBlur=0;
   ctx.font=`900 ${Math.round((short?12:13)*U)}px "Segoe UI"`;
   ctx.fillStyle=YL;
-  ctx.fillText("ALT x"+curDeck.mult+"   TOTAL x"+Math.round(totalMult(f?f.y:2600))+
-    (short?"   BALL "+Math.min(ballNum,BALLS_PER_GAME)+"/"+BALLS_PER_GAME:""),VW/2,cyT+(short?33:36)*U);
+  ctx.fillText(level
+    ? level.goalText+"  "+levelProg+"/"+levelGoal+"   "+Math.ceil(Math.max(levelT,0))+"s"
+    : "ALT x"+curDeck.mult+"   TOTAL x"+Math.round(totalMult(f?f.y:2600))+
+      (short?"   BALL "+Math.min(ballNum,BALLS_PER_GAME)+"/"+BALLS_PER_GAME:""),
+    VW/2,cyT+(short?33:36)*U);
+
+  /* how long the room will keep you — the bar is the clock */
+  if(level){
+    const bw=Math.round((short?150:200)*U), bx=VW/2-bw/2, by=cyT+(short?40:44)*U;
+    ctx.fillStyle="rgba(255,255,255,0.12)";ctx.fillRect(bx,by,bw,4*U);
+    ctx.fillStyle=levelT<8?RD:level.col2;
+    ctx.fillRect(bx,by,bw*clamp(levelT/level.dur,0,1),4*U);
+  }
 
   /* ball + storm */
   if(short){
@@ -306,12 +317,14 @@ function drawActionPanel(U,narrow,barH){
       ctx.fillRect(px+12*U,py+50*U,bw2*mission.data.heat,4*U);
     }
   }else{
-    const txt = cannon.loaded ? (IS_TOUCH?"TAP LAUNCH TO FIRE THE CANNON":"PRESS SPACE TO FIRE THE CANNON")
+    const txt = level ? (levelDone?"KEEP SCORING — "+level.short+" IS PAID":level.goalText.toUpperCase())
+      : cannon.loaded ? (IS_TOUCH?"TAP LAUNCH TO FIRE THE CANNON":"PRESS SPACE TO FIRE THE CANNON")
       : wizard.active ? "ASCENSION \u2014 EVERY SHOT SCORES"
       : bossReady&&!boss.active ? "THE CROWN IS LIT \u2014 SHOOT THE KING"
       : boss.active ? "HIT THE KING \u2014 THE CROWN IS HIS HEART"
       : "SHOOT THE MISSION SCOOP \u2014 STORM SPINE";
-    const col = cannon.loaded?YL : wizard.active?YL : (bossReady||boss.active)?RD : GR;
+    const col = level?(levelDone?YL:level.col2) : cannon.loaded?YL : wizard.active?YL
+      : (bossReady||boss.active)?RD : GR;
     ctx.textAlign="center";
     ctx.globalAlpha=(cannon.loaded||bossReady)?0.65+0.35*Math.sin(timeSec*8):0.85;
     let bfs=Math.round(13*U);
@@ -350,6 +363,7 @@ function meter(x,y,w,h,v,cols,label,hot){
 /* ---------- MINIMAP: small, cornered, out of the shot line ---------- */
 let minimapAlpha=1;
 function drawMinimap(U){
+  if(level)return;                    // one room, nothing to navigate
   const short=isShort();
   /* The minimap lives in the right margin, and the floating LAUNCH pad is also
      in the right margin, so it is sized against the pad's real rect: it fills

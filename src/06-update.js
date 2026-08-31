@@ -88,12 +88,15 @@ function update(dt){
     }
   }
 
-  /* magnets, cannon, missions, boss, wizard */
+  /* magnets, cannon, missions, boss, wizard — all of it the tower's, so it
+     holds its breath while you are off in one of the warp rooms */
   magnetTick(dt);
-  cannonTick(dt);
-  missionTick(dt);
-  bossTick(dt);
-  wizardTick(dt);
+  if(!level){
+    cannonTick(dt);
+    missionTick(dt);
+    bossTick(dt);
+    wizardTick(dt);
+  }
 
   /* ball buffs decay */
   for(const b of balls){
@@ -166,9 +169,9 @@ function update(dt){
 
   /* orbs */
   orbTimer-=dt;
-  if(orbTimer<=0&&state==="PLAY"&&orbs.length<3){
+  if(orbTimer<=0&&state==="PLAY"&&orbs.length<3&&!level){
     orbTimer=rand(15,26);
-    const d=DECKS[irand(1,4)];
+    const d=DECKS[irand(1,Math.max(1,DECKS.length-1))];
     spawnOrb(rand(220,1440),rand(d.y0+120,d.y1-140));
   }
   for(let i=orbs.length-1;i>=0;i--){
@@ -213,7 +216,7 @@ function update(dt){
 
   /* weather */
   weather.gustT-=dt;
-  if(weather.gustT<=0&&state==="PLAY"){
+  if(weather.gustT<=0&&state==="PLAY"&&!level){
     weather.gustT=rand(14,30);
     if(Math.random()<0.55&&!boss.active){
       windTarget=rand(-560,560);windT=rand(2.4,4);
@@ -265,8 +268,11 @@ function update(dt){
 
   musicTick(dt);
 
-  /* physics */
-  if(state==="PLAY"&&!paused){
+  /* warp transitions and whatever room we are standing in */
+  levelTick(dt);
+
+  /* physics — frozen while the world is being swapped underneath us */
+  if(state==="PLAY"&&!paused&&warpT<=0){
     if(charging){
       plungerCharge+=dt*1.15*(plungerDir);
       if(plungerCharge>=1){plungerCharge=1;plungerDir=-1;}
@@ -278,7 +284,7 @@ function update(dt){
     const nsub=clamp(Math.ceil(vmaxNow*dt*ts/9),4,18);
     const sdt=dt*ts/nsub;
     for(let i=0;i<nsub;i++){stepFlippers(sdt);physics(sdt);}
-  }else if(state==="BONUS"){
+  }else if(state==="BONUS"&&!paused){
     endBonusTimer+=dt;
     const steps=14,per=endBonus/steps;
     if(endBonusStep<steps&&endBonusTimer>endBonusStep*0.09+0.35){

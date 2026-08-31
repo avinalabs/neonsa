@@ -303,9 +303,19 @@ function physics(dt){
     }
 
     /* ---- free flight ---- */
-    b.vx+=(gravX()+windX)*dt;
-    b.vy+=gravY()*dt;
+    b.vx+=(gravX()*gravMul+windX)*dt;
+    b.vy+=gravY()*gravMul*dt;
     if(b.plasma>0)b.vy-=140*dt;                       // plasma balls float a touch
+    /* the warp levels bend the rules: the Deep is thick, the Spiral turns */
+    if(dragMul>0){const k=Math.pow(1-clamp(dragMul,0,0.95),dt*6);b.vx*=k;b.vy*=k;}
+    if(swirl!==0){
+      const cx=PW/2, cy=PH*0.46;
+      const dx=b.x-cx, dy=b.y-cy, d=Math.hypot(dx,dy);
+      if(d>40){
+        const f=swirl*clamp(1-d/(PW*0.62),0,1)*dt;
+        b.vx+=-dy/d*f; b.vy+= dx/d*f;
+      }
+    }
     const sp0=Math.hypot(b.vx,b.vy);
     if(sp0>VMAX){b.vx*=VMAX/sp0;b.vy*=VMAX/sp0;}
     b.x+=b.vx*dt;b.y+=b.vy*dt;
@@ -466,7 +476,7 @@ function physics(dt){
       b.vx*=-0.4;b.vy=Math.abs(b.vy)*0.4+120;
     }
     if(b.y>PH+30){
-      if(b.shield){
+      if(b.shield&&!level){
         b.shield=false;
         b.x=830;b.y=2500;b.vx=rand(-160,160);b.vy=-1900;
         announce("SHIELD SAVE!",GR,true);SND.save();flash(.4,GR);
@@ -474,9 +484,9 @@ function physics(dt){
         continue;
       }
       b.gone=true;
-      spark(b.x,PH-30,26,RD,320);
+      spark(b.x,PH-30,26,level?level.col:RD,320);
       balls.splice(bi,1);
-      onDrain(b);
+      if(!levelDrain())onDrain(b);
     }
   }
 }
