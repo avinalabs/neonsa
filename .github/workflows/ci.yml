@@ -24,6 +24,9 @@ jobs:
       - name: Smoke tests
         run: node test/smoke.mjs
 
+      - name: Touch everything on every table
+        run: node test/interactions.mjs --quick
+
       - name: Warp levels
         run: node test/levels.mjs 2 60
 

@@ -315,10 +315,30 @@ function onScoop(s,b){
   else if(s.kind==="crown"){s.pending="crown";b.hold=0.8;}
   else if(s.kind==="rod"){s.pending="rod";b.hold=0.9;}
 }
+/* Throw the ball out of a hole toward wherever there is actually room. Firing
+   straight up out of the warp gates meant bouncing off the deck floor above
+   and dropping straight back in, over and over — the ball looked welded to the
+   gate. Aiming at open table ends that whole class of loop. */
+function ejectClear(s,eject,lo,hi){
+  const a=clearestDir(s.x,s.y)+rand(-0.22,0.22);
+  const spd=rand(lo,hi);
+  eject(Math.cos(a)*spd,Math.sin(a)*spd);
+}
 function resolveScoop(b){
   const s=b.scoop;
   b.scoop=null;
-  const eject=(vx,vy)=>{b.x=s.x;b.y=s.y-10;b.vx=vx;b.vy=vy;b.trail.length=0;};
+  let kicked=false;
+  const eject=(vx,vy)=>{b.x=s.x;b.y=s.y-10;b.vx=vx;b.vy=vy;b.trail.length=0;kicked=true;};
+  try{ resolveScoopInner(b,s,eject); }
+  finally{
+    /* Whatever the case above decided, a ball that is out of the scoop and
+       still motionless is sitting on top of the thing that just released it,
+       and will be swallowed again on the next cooldown. */
+    if(!kicked&&!b.scoop&&!b.rail&&warpT<=0&&Math.hypot(b.vx,b.vy)<40)
+      eject(rand(-300,300),-rand(1500,1900));
+  }
+}
+function resolveScoopInner(b,s,eject){
   switch(s.kind){
     case "mystery": triggerMystery(s,b); eject(rand(-260,260),-rand(1900,2400)); break;
     case "lock":    doLock(s,b,eject); break;
@@ -326,25 +346,41 @@ function resolveScoop(b){
     case "vent":    doVent(s,b); eject(rand(-260,260),-rand(1800,2300)); break;
     case "crown":   doCrown(s,b); eject(rand(-380,380),rand(700,1100)); break;
     case "rod":     doRod(s,b);   eject(rand(-420,420),rand(800,1200)); break;
-    case "warp":    doWarp(s,b);  return;                       // no eject — the room leaves
+    /* If the warp actually starts, the world leaves and the ball goes with it.
+       If it does not — a cold gate, or a warp already running — the ball MUST
+       still be kicked out. Returning here without an eject dropped it at the
+       gate with no velocity, where it settled, was captured again, and cycled
+       forever: a dead game that looked like a stuck ball. */
+    /* A cold gate throws the ball back toward the middle of the table, not
+       straight up: straight up meant bouncing off the deck floor 300px above
+       and dropping right back into the hole, over and over, which is what a
+       player sees as a ball stuck on the gate. The gate also stays shut for
+       three seconds so a returning ball is not swallowed on the way past. */
+    case "warp":    if(!doWarp(s,b)){
+                      s.cool=Math.max(s.cool,3);
+                      ejectClear(s,eject,2000,2500);
+                    }
+                    return;
     case "eye":     levelScore(); eject(rand(-520,520),rand(-1500,-900)); break;
     case "vent2":   doForgeVent(b); eject(rand(-420,420),rand(900,1300)); break;
     case "maw":     doMaw(s,b);   eject(rand(-300,300),rand(700,1000)); break;
-    default:        eject(rand(-200,200),-rand(1600,2000));
+    default:        ejectClear(s,eject,1700,2100);
   }
 }
 
 /* ---------- the warp holes ---------- */
+/* returns true only if the room is actually taking you */
 function doWarp(s,b){
   if(!warpAvailable(s.level)){
     /* dark gate: still worth something, just not a ride */
     const p=addScore(24000,s.x,s.y,{col:"#6d7b96",size:22});
-    announce("GATE COLD  "+Math.ceil(gateCool[s.level])+"s",IC,false);
+    announce("GATE COLD  "+Math.ceil(Math.max(gateCool[s.level],0))+"s",IC,false);
     floatText(s.x,s.y-50,"+"+shortNum(p),IC,20);
-    return;
+    return false;
   }
   addScore(60000,s.x,s.y,{col:LEVELS[s.level].col,size:28});
   warpBegin(s.level,s.name);
+  return true;
 }
 /* the FORGE vent also drives the lava back down the shaft */
 function doForgeVent(b){
@@ -816,7 +852,7 @@ function cannonFire(){
   const s=scoopBy("CANNON");
   if(!s)return;
   cannon.loaded=false;cannon.ball=null;
-  b.scoop=null;
+  b.scoop=null;b.hold=undefined;          // the indefinite hold ends here
   const spd=3400;
   b.x=s.x+Math.cos(cannon.ang)*60;b.y=s.y+Math.sin(cannon.ang)*60;
   b.vx=Math.cos(cannon.ang)*spd;b.vy=Math.sin(cannon.ang)*spd;

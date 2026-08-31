@@ -419,6 +419,7 @@ function deckAt(y){
   return DECKS[DECKS.length-1];
 }
 /* ---------- warp-level state (see 03b-levels.js) ---------- */
+let levelHold=false;         // test harness: freeze the visit clock
 let level=null;                 // the LEVELS entry we are inside, or null on the tower
 let levelT=0, levelGoal=0, levelProg=0, levelJack=0, levelDone=false, levelSaves=0;
 let warpT=0, warpDir=0, warpTo=null;     // transition timer / +1 in, -1 out
@@ -439,6 +440,8 @@ let bonusBank=0,endBonus=0,endBonusStep=0,endBonusTimer=0;
 let plungerCharge=0,charging=false,ballInPlunger=false,launchDeckSel=0;
 let tiltHeat=0,tilted=false,nudgesUsed=0;
 let shoveX=0,shoveY=0,shoveT=0;      // the table still moving after a nudge
+let nanRecoveries=0;                 // balls rescued from a non-finite state
+let rescues=0;                       // balls put back in play from somewhere unreachable
 let ballSaveT=0,skillDeck=-1,skillArmed=false;
 let stormMeter=0,surge=0,surgeT=0;
 let frenzyT=0,superBumperT=0,goldT=0;
@@ -964,10 +967,11 @@ function buildSpiral(L){
      they made. One closed curve cannot cross itself. */
   const gapA=1.955, gapB=1.187+Math.PI*2;      // 112 deg round to 68 deg
   ringWall(cx,cy,R,gapA,gapB,46,0.54);
-  const lx=cx+R*Math.cos(gapA), ly=cy+R*Math.sin(gapA);
-  const rx=cx+R*Math.cos(gapB), ry=cy+R*Math.sin(gapB);
-  W(lx,ly, cx-320,h-190, 0.42);  W(cx-320,h-190, cx-136,h-6, 0.24);
-  W(rx,ry, cx+320,h-190, 0.42);  W(cx+320,h-190, cx+136,h-6, 0.24);
+  /* No extra outlane guides here. The first version ran one from each gap edge
+     down and inwards, and it CROSSED the inlane guide that levelFlippers
+     builds — the V-trap this file's own comment warns about, rebuilt in the
+     same room. The arc drops the ball straight onto the inlane guide, which is
+     all the room needs. */
   levelFlippers(cx,h-208,250,180);
 
   /* THE EYE — the whole point of the room */
@@ -1058,8 +1062,13 @@ function buildForge(L){
   ];
   for(let i=0;i<4;i++)
     rollovers.push({x:200+i*(w-400)/3,y:h-560,r:26,lit:false,cool:-9,id:i,deck:0});
-  dropBanks.push({name:"SLAG",deck:0,targets:[0,1,2].map(i=>({
-    x:cx-110+i*110,y:1760,w:74,h:20,down:false,col:RD}))});
+  /* Drop targets are line segments with an `up` flag, not boxes — the first
+     version of this bank invented its own shape and was silently inert,
+     because the collision loop skips anything without `t.up`. */
+  dropBanks.push({type:"slag",word:"SLAG",resetT:0,targets:[0,1,2].map(i=>{
+    const tx=cx-110+i*110, ty=1760;
+    return{cx:tx,cy:ty,x1:tx-38,y1:ty,x2:tx+38,y2:ty,up:true,idx:i,fx:0};
+  })});
   spinners.push({x:cx,y:2000,r:40,ang:0,vel:0,cool:-9,col:OR,deck:0,name:"BELLOWS"});
   decor.push({x:cx,y:h*0.62,t:"THE FORGEWORKS",s:50,c:OR,a:0.10});
   decor.push({x:cx,y:h*0.62+58,t:"CLIMB",s:26,c:RD,a:0.13});
@@ -1286,7 +1295,12 @@ function leaveLevel(paid){
   for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
   const g=warpGate&&scoopBy(warpGate)||null;
   const x=g?g.x:830, y=g?g.y:2200;
-  const b=spawnBall(x,y-30,rand(-320,320),-rand(1500,2100));
+  /* Clear of the mouth, not in it. Returning the ball 30px above the gate put
+     it straight back inside the capture radius, so the gate swallowed the ball
+     it had just spat out — over and over, which is what a player sees as the
+     ball being stuck on the hole. The gate also gets a moment to close. */
+  const b=spawnBall(x,y-140,rand(-420,420),-rand(1900,2400));
+  if(g)g.cool=Math.max(g.cool,2.5);
   b.deck=deckAt(b.y).id;b.prevDeck=b.deck;
   ballInPlunger=false;
   ballSaveT=Math.max(ballSaveT,6);
@@ -1339,7 +1353,7 @@ function levelTick(dt){
     return;
   }
   if(!level)return;
-  levelT-=dt;
+  if(!levelHold)levelT-=dt;
   level.tick(dt,level);
   if(levelT<=0){warpExit(false);return;}
   if(levelT<6&&Math.floor(levelT+dt)!==Math.floor(levelT))SND.tick();
@@ -1349,13 +1363,13 @@ function levelTick(dt){
    bounce ten seconds in wastes the whole visit and the gate's cooldown. */
 function levelDrain(){
   if(!level)return false;
-  if(levelSaves>0){
-    levelSaves--;
+  if(levelHold||levelSaves>0){          // levelHold: the test harness keeps the room open
+    if(!levelHold)levelSaves--;
     const e=LEVEL_ENTRY[level.id]();
     const b=spawnBall(e.x,e.y,e.vx,e.vy);
     b.deck=0;b.prevDeck=0;
-    SND.save();flash(0.35,level.col2);
-    announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);
+    if(!levelHold){SND.save();flash(0.35,level.col2);
+      announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);}
     return true;
   }
   warpExit(false);
@@ -1518,7 +1532,8 @@ function spawnBall(x,y,vx,vy,opt){
     scoop:null,scoopT:0,magnet:null,
     deck:deckAt(y).id,prevDeck:deckAt(y).id,
     gold:false,plasma:0,phase:0,shield:false,heavy:0,ghost:false,
-    still:0,stuckLv:0,spawnT:timeSec,gone:false,inLane:false,launchT:-1
+    still:0,stuckLv:0,ax:undefined,ay:0,at:0,hx:undefined,hy:0,ht:0,onFlip:-9,
+    spawnT:timeSec,gone:false,inLane:false,launchT:-1
   },opt||{});
   balls.push(b);
   return b;
@@ -1720,6 +1735,7 @@ function physics(dt){
           const d=Math.hypot(b.x-cp.x,b.y-cp.y);
           if(d<bd){bd=d;best=cp;}
         }
+        if(!best)continue;                  // degenerate triangle, nothing to push off
         const gx=(s.ax+s.bx+s.cx)/3, gy=(s.ay+s.by+s.cy)/3;
         let ux=best.x-gx, uy=best.y-gy;
         const l=Math.hypot(ux,uy)||1; ux/=l; uy/=l;
@@ -1783,6 +1799,7 @@ function physics(dt){
       let nx=b.x-c.x,ny=b.y-c.y,d=Math.hypot(nx,ny);
       const rr=b.r+13;
       if(d<rr){
+        b.onFlip=timeSec;                 // cradling is legitimate — see the nudger
         if(d<0.0001){nx=0;ny=-1;d=0.0001;}else{nx/=d;ny/=d;}
         b.x=c.x+nx*rr;b.y=c.y+ny*rr;
         const rx=c.x-f.px,ry=c.y-f.py;
@@ -1823,18 +1840,87 @@ function physics(dt){
     /* ---- sensors ---- */
     sensors(b,dt);
 
-    /* ---- stuck nudger ---- */
-    const sp=Math.hypot(b.vx,b.vy);
-    if(sp<34)b.still+=dt; else {b.still=0;if(sp>240)b.stuckLv=0;}
-    if(b.still>1.5&&state==="PLAY"){
-      b.still=0;b.stuckLv++;
-      if(b.stuckLv>=3){b.stuckLv=0;b.vx+=rand(-700,700);b.vy-=rand(900,1500);spark(b.x,b.y,10,YL,300);}
-      else{b.vx+=rand(-280,280);b.vy-=rand(300,650);}
+    /* ---- stuck nudger ----
+       Stuck is about DISPLACEMENT, not speed. The old test asked "is the ball
+       moving slower than 34px/s", and a ball creeping along a wall at 52 is
+       moving fast enough to pass that while going absolutely nowhere — which
+       is precisely what a player calls stuck. This asks the question the soak
+       test asks: has the ball actually left where it was?
+
+       Two things are deliberately NOT stuck: a ball cradled on a flipper,
+       which is good pinball and must never be kicked away from you, and a ball
+       a scoop or rail is holding on purpose. Those pause the clock rather than
+       resetting it, so a ball cycling in and out of a hole still gets caught. */
+    const held=b.scoop||b.rail||b.magnet||b.inLane||b.launchT>=0;
+    const cradled=timeSec-(b.onFlip||-9)<0.35;
+
+    /* Second, slower watchdog. The nudger below frees the ball for a moment,
+       which resets its own escalation — so a ball that keeps being kicked and
+       keeps falling back into the same pocket can loop forever without ever
+       reaching the last resort. This one asks a question no kick can fake:
+       has the ball been within the same 340px of table for twelve seconds
+       while scoring nothing? A cradle pauses it, so holding a ball on the
+       flipper is never punished. */
+    if(b.hx===undefined){b.hx=b.x;b.hy=b.y;b.ht=0;}
+    if(held||cradled){/* paused on purpose */}
+    else if(Math.hypot(b.x-b.hx,b.y-b.hy)>340){b.hx=b.x;b.hy=b.y;b.ht=0;}
+    else{
+      b.ht+=dt;
+      if(b.ht>12&&state==="PLAY"&&timeSec-lastScoreTime>6){
+        b.hx=b.x;b.hy=b.y;b.ht=0;b.stuckLv=0;b.at=0;
+        b.x=PW*0.5;b.y=Math.min(PH*0.42,1200);b.vx=rand(-300,300);b.vy=380;
+        b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+        b.ax=b.x;b.ay=b.y;
+        ballSaveT=Math.max(ballSaveT,4);
+        spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
+        announce("BALL RETURNED",IC,false);
+        rescues++;
+      }
+    }
+    if(b.ax===undefined){b.ax=b.x;b.ay=b.y;b.at=0;}
+    if(held||cradled){
+      if(cradled){b.ax=b.x;b.ay=b.y;b.at=0;}
+    }else if(Math.hypot(b.x-b.ax,b.y-b.ay)>120){
+      b.ax=b.x;b.ay=b.y;b.at=0;b.stuckLv=0;
+    }else{
+      b.at+=dt;
+      if(b.at>3.2&&state==="PLAY"){
+        b.at=0;b.ax=b.x;b.ay=b.y;b.stuckLv++;
+        if(b.stuckLv>=3){
+          /* Three escalations and it is still there, so it is somewhere a kick
+             cannot reach out of — a sealed pocket, a seam, something nobody
+             thought of. Put it back in play rather than leave a dead game:
+             whatever the cause, the player should never have to reload. */
+          b.stuckLv=0;
+          b.x=PW*0.5;b.y=Math.min(PH*0.42,1200);b.vx=rand(-300,300);b.vy=380;
+          b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+          ballSaveT=Math.max(ballSaveT,4);
+          spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
+          announce("BALL RETURNED",IC,false);
+          rescues++;
+        }else if(b.stuckLv>=2){
+          b.vx+=rand(-900,900);b.vy-=rand(1300,1900);
+          spark(b.x,b.y,12,YL,340);
+          floatText(b.x,b.y-42,"UNSTUCK",IC,18);
+        }else{b.vx+=rand(-420,420);b.vy-=rand(600,1000);spark(b.x,b.y,5,IC,220);}
+      }
     }
 
     /* ---- deck tracking ---- */
     const dk=deckAt(b.y).id;
     if(dk!==b.deck){b.prevDeck=b.deck;b.deck=dk;onDeckChange(b,dk,b.prevDeck);}
+
+    /* ---- a ball that has stopped being a number ----
+       One non-finite value used to throw inside the collision code on every
+       subsequent frame, which freezes the whole game while the last drawn
+       frame stays on screen — indistinguishable, from the player's side, from
+       the ball being stuck. Whatever produced it, the recovery is the same. */
+    if(!isFinite(b.x)||!isFinite(b.y)||!isFinite(b.vx)||!isFinite(b.vy)){
+      b.x=PW*0.5;b.y=Math.min(PH*0.5,900);b.vx=0;b.vy=200;
+      b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+      b.still=0;b.stuckLv=0;b.ax=undefined;b.at=0;b.hx=undefined;b.ht=0;
+      nanRecoveries++;
+    }
 
     /* ---- out of bounds / drain ---- */
     if(b.x<-80||b.x>PW+120||b.y<-160){
@@ -1855,6 +1941,35 @@ function physics(dt){
       if(!levelDrain())onDrain(b);
     }
   }
+}
+
+/* How far a ball could travel from here in a given direction before it hits
+   something. Used to throw a ball out of a hole toward open table instead of
+   toward whatever happens to be overhead — ejecting straight up from a scoop
+   with a deck floor 300px above meant the ball bounced and dropped right back
+   in, forever. */
+function rayClearance(x,y,dx,dy,cap){
+  let best=cap;
+  for(const w of walls){
+    const ex=w.x2-w.x1, ey=w.y2-w.y1;
+    const den=dx*ey-dy*ex;
+    if(Math.abs(den)<1e-9)continue;
+    const t=((w.x1-x)*ey-(w.y1-y)*ex)/den;      // along the ray
+    const u=((w.x1-x)*dy-(w.y1-y)*dx)/den;      // along the segment
+    if(t>0&&t<best&&u>=0&&u<=1)best=t;
+  }
+  return best;
+}
+/* the direction out of (x,y) with the most room, preferring not straight down */
+function clearestDir(x,y){
+  let bestA=-Math.PI/2, bestD=-1;
+  for(let i=0;i<24;i++){
+    const a=-Math.PI+i*(Math.PI*2/24);
+    if(Math.sin(a)>0.45)continue;               // never fire it at the drain
+    const d=rayClearance(x,y,Math.cos(a),Math.sin(a),1200)*(1-Math.sin(a)*0.15);
+    if(d>bestD){bestD=d;bestA=a;}
+  }
+  return bestA;
 }
 
 function pushTrail(b){
@@ -1939,7 +2054,12 @@ function sensors(b,dt){
       d=dist(s.x,s.y,c.x,c.y);
     }else d=dist(b.x,b.y,s.x,s.y);
     if(d<s.r){
-      b.scoop=s;b.scoopT=0;s.cool=1.6;
+      /* Clear the hold timer on capture. The cannon sets hold=99 to keep the
+         ball until you fire it, and that value used to survive the shot — so
+         the NEXT hole the ball fell into inherited "hold forever" and never
+         let go. That is a dead game, and it is exactly what a player sees as a
+         ball welded to a gate. A capture always starts a fresh clock. */
+      b.scoop=s;b.scoopT=0;s.cool=1.6;b.hold=undefined;
       onScoop(s,b);
     }
   }
@@ -2277,10 +2397,30 @@ function onScoop(s,b){
   else if(s.kind==="crown"){s.pending="crown";b.hold=0.8;}
   else if(s.kind==="rod"){s.pending="rod";b.hold=0.9;}
 }
+/* Throw the ball out of a hole toward wherever there is actually room. Firing
+   straight up out of the warp gates meant bouncing off the deck floor above
+   and dropping straight back in, over and over — the ball looked welded to the
+   gate. Aiming at open table ends that whole class of loop. */
+function ejectClear(s,eject,lo,hi){
+  const a=clearestDir(s.x,s.y)+rand(-0.22,0.22);
+  const spd=rand(lo,hi);
+  eject(Math.cos(a)*spd,Math.sin(a)*spd);
+}
 function resolveScoop(b){
   const s=b.scoop;
   b.scoop=null;
-  const eject=(vx,vy)=>{b.x=s.x;b.y=s.y-10;b.vx=vx;b.vy=vy;b.trail.length=0;};
+  let kicked=false;
+  const eject=(vx,vy)=>{b.x=s.x;b.y=s.y-10;b.vx=vx;b.vy=vy;b.trail.length=0;kicked=true;};
+  try{ resolveScoopInner(b,s,eject); }
+  finally{
+    /* Whatever the case above decided, a ball that is out of the scoop and
+       still motionless is sitting on top of the thing that just released it,
+       and will be swallowed again on the next cooldown. */
+    if(!kicked&&!b.scoop&&!b.rail&&warpT<=0&&Math.hypot(b.vx,b.vy)<40)
+      eject(rand(-300,300),-rand(1500,1900));
+  }
+}
+function resolveScoopInner(b,s,eject){
   switch(s.kind){
     case "mystery": triggerMystery(s,b); eject(rand(-260,260),-rand(1900,2400)); break;
     case "lock":    doLock(s,b,eject); break;
@@ -2288,25 +2428,41 @@ function resolveScoop(b){
     case "vent":    doVent(s,b); eject(rand(-260,260),-rand(1800,2300)); break;
     case "crown":   doCrown(s,b); eject(rand(-380,380),rand(700,1100)); break;
     case "rod":     doRod(s,b);   eject(rand(-420,420),rand(800,1200)); break;
-    case "warp":    doWarp(s,b);  return;                       // no eject — the room leaves
+    /* If the warp actually starts, the world leaves and the ball goes with it.
+       If it does not — a cold gate, or a warp already running — the ball MUST
+       still be kicked out. Returning here without an eject dropped it at the
+       gate with no velocity, where it settled, was captured again, and cycled
+       forever: a dead game that looked like a stuck ball. */
+    /* A cold gate throws the ball back toward the middle of the table, not
+       straight up: straight up meant bouncing off the deck floor 300px above
+       and dropping right back into the hole, over and over, which is what a
+       player sees as a ball stuck on the gate. The gate also stays shut for
+       three seconds so a returning ball is not swallowed on the way past. */
+    case "warp":    if(!doWarp(s,b)){
+                      s.cool=Math.max(s.cool,3);
+                      ejectClear(s,eject,2000,2500);
+                    }
+                    return;
     case "eye":     levelScore(); eject(rand(-520,520),rand(-1500,-900)); break;
     case "vent2":   doForgeVent(b); eject(rand(-420,420),rand(900,1300)); break;
     case "maw":     doMaw(s,b);   eject(rand(-300,300),rand(700,1000)); break;
-    default:        eject(rand(-200,200),-rand(1600,2000));
+    default:        ejectClear(s,eject,1700,2100);
   }
 }
 
 /* ---------- the warp holes ---------- */
+/* returns true only if the room is actually taking you */
 function doWarp(s,b){
   if(!warpAvailable(s.level)){
     /* dark gate: still worth something, just not a ride */
     const p=addScore(24000,s.x,s.y,{col:"#6d7b96",size:22});
-    announce("GATE COLD  "+Math.ceil(gateCool[s.level])+"s",IC,false);
+    announce("GATE COLD  "+Math.ceil(Math.max(gateCool[s.level],0))+"s",IC,false);
     floatText(s.x,s.y-50,"+"+shortNum(p),IC,20);
-    return;
+    return false;
   }
   addScore(60000,s.x,s.y,{col:LEVELS[s.level].col,size:28});
   warpBegin(s.level,s.name);
+  return true;
 }
 /* the FORGE vent also drives the lava back down the shaft */
 function doForgeVent(b){
@@ -2778,7 +2934,7 @@ function cannonFire(){
   const s=scoopBy("CANNON");
   if(!s)return;
   cannon.loaded=false;cannon.ball=null;
-  b.scoop=null;
+  b.scoop=null;b.hold=undefined;          // the indefinite hold ends here
   const spd=3400;
   b.x=s.x+Math.cos(cannon.ang)*60;b.y=s.y+Math.sin(cannon.ang)*60;
   b.vx=Math.cos(cannon.ang)*spd;b.vy=Math.sin(cannon.ang)*spd;
@@ -5320,10 +5476,64 @@ window.__NSA__={
     flippers:flippers.length}:null;},
   gates(){return Object.assign({},gateCool);},
   warpsOff(){for(const k in gateCool)gateCool[k]=1e6;},
+  holdLevel(on){levelHold=!!on;},
+  /* restart a finished game without leaving whatever table we are testing */
+  revive(){
+    /* never act mid-transition, or warpExit is a no-op and the restart happens
+       inside the level with the tower still stashed */
+    for(let i=0;i<120&&warpT>0;i++)update(1/60);
+    const back=level&&level.id;
+    if(back){levelHold=false;warpExit(true);
+      for(let i=0;i<160&&level;i++)update(1/60);}
+    newGame();
+    /* keep every gate shut through the restart, or the fresh ball drops down
+       one of them and the sweep quietly continues in the wrong room */
+    for(const k in gateCool)gateCool[k]=1e6;
+    launchNow(0.6);for(let i=0;i<120;i++)update(1/60);
+    if(back){
+      gateCool[back]=0;warpBegin(back,null);
+      for(let i=0;i<160&&!level;i++)update(1/60);
+      for(const k in gateCool)gateCool[k]=1e6;
+      levelHold=true;
+    }
+    return back?(!!level&&level.id===back):!level;},
+  nanCount(){return nanRecoveries;},
+  rescueCount(){return rescues;},
+  clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
+  wallsNear(x,y,r){return walls.filter(w=>{
+    const c=closestSeg(x,y,w.x1,w.y1,w.x2,w.y2);
+    return Math.hypot(x-c.x,y-c.y)<r;
+  }).map(w=>`(${w.x1},${w.y1})->(${w.x2},${w.y2}) e=${w.e}`);},
+  /* every interactive thing on whatever table is currently loaded, with the
+     position a ball would have to reach to trigger it — the input to the
+     trap hunt in test/interactions.mjs */
+  hotspots(){
+    const out=[];
+    const add=(kind,name,x,y,r)=>{
+      if(!isFinite(x)||!isFinite(y))return;      // a malformed entry is its own bug
+      out.push({kind,name,x:Math.round(x),y:Math.round(y),r:Math.round(r||30)});};
+    for(const s of scoops)   add("scoop",s.name,s.x,s.y,s.r);
+    for(const r of rails)    add("rail",r.name,r.mouth.x,r.mouth.y,r.mouth.r);
+    bumpers.forEach((b,i)=>  add("bumper","bumper"+i,b.x,b.y,b.r));
+    slings.forEach((s,i)=>   add("sling","sling"+i,(s.ax+s.bx+s.cx)/3,(s.ay+s.by+s.cy)/3,40));
+    for(const s of spinners) add("spinner",s.name,s.x,s.y,s.r);
+    rollovers.forEach((r,i)=>add("rollover","roll"+i,r.x,r.y,r.r));
+    lanes.forEach((l,i)=>    add("lane","lane"+i,l.x,l.y,l.r));
+    for(const p2 of portals){add("portal",p2.name+"-a",p2.a.x,p2.a.y,p2.r);
+                             add("portal",p2.name+"-b",p2.b.x,p2.b.y,p2.r);}
+    for(const m of magnets)  add("magnet",m.name||"magnet",m.x,m.y,m.r);
+    for(const k of kickbacks)add("kickback",k.name,k.x,k.y,k.r);
+    for(const bank of dropBanks)
+      bank.targets.forEach((t,i)=>add("target",(bank.type||bank.name||"bank")+i,t.cx,t.cy,36));
+    bricks.forEach((b,i)=>{if(i%7===0)add("brick","brick"+i,b.x+b.w/2,b.y+b.h/2,b.w/2);});
+    flippers.forEach((f,i)=> add("flipper","flip"+i,f.px,f.py,30));
+    return out;
+  },
   scoopList(){return scoops.map(s=>({name:s.name,x:s.x,y:s.y,r:s.r,cool:+s.cool.toFixed(2),
     kind:s.kind,lit:!!s.lit}));},
   nudge(dir){doNudge(dir<0?-470:dir>0?470:0,dir===0?-560:-190);},
   railDir(name){const R=rails.find(r=>r.name===name);
+    if(!R)return null;
     const a=R.pts[0],b2=R.pts[1],l=Math.hypot(b2[0]-a[0],b2[1]-a[1]);
     return{x:(b2[0]-a[0])/l,y:(b2[1]-a[1])/l};},
   railList(){return rails.map(r=>({name:r.name,short:r.short,x:r.mouth.x,y:r.mouth.y,

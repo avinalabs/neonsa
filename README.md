@@ -143,6 +143,7 @@ node build.mjs --check # fail if index.html is stale (CI runs this)
 npm install
 npx playwright install chromium
 npm test               # smoke: 7 viewports, pads vs ball, zoom recovery, game-over, multi-touch
+npm run test:interactions  # touch every element on every table, then sweep a grid
 npm run test:levels    # each warp room built, played, escaped, and timed
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
@@ -152,6 +153,30 @@ The page exposes `window.__NSA__` as a test harness — `start()`, `launch(power
 `step(frames)`, `info()`, `flip(side, on)`, `forceMission(id)`, `forceBoss()`,
 `drain()`, `flipState()`. `step()` drives the simulation directly instead of waiting on
 real frames, so the soak test plays 300 seconds of pinball in about four.
+
+**`test/interactions.mjs` goes looking instead of waiting.** The soak plays and hopes to
+stumble into a trap. This one takes the position of every scoop, ramp mouth, bumper,
+sling, spinner, rollover, lane, portal, kickback, drop target, brick and flipper pivot,
+and fires the ball at each from twelve directions at three speeds — then does the same on
+a 150px grid over the *entire* playfield, on the tower and inside all three warp rooms.
+About 25,000 probes. It asks two different questions:
+
+- **Does it respond?** Every "I touched it and nothing happened" report on this project
+  has been a real bug — a hole whose capture radius was half the hole, a ramp that
+  refused in silence, a drop-target bank built with the wrong shape and therefore inert.
+  A test that only checks the ball keeps moving would have passed on all three.
+- **Does it let go?** A probe that looks trapped is re-run for another sixteen seconds
+  before it is reported, because a ball caught mid-capture looks pinned for a moment and
+  an unconfirmed failure makes the whole suite untrustworthy.
+
+The grid half earns its keep: the worst trap it found was a stretch of bare wall with
+nothing interactive anywhere near it.
+
+And because no amount of geometry testing proves a table has no bad corners left, the
+game carries a **last-resort return**: a ball that has stayed within 340px of the same
+spot for twelve seconds without scoring is put back into play with a ball save. The soak
+holds it to a budget of roughly one per thousand simulated seconds — it is a safety net,
+and if it starts firing more than that, something reachable is holding the ball.
 
 **The soak test looks for motion, not score.** A ball that stays inside a 60px box for
 seven seconds is wedged in the geometry; a ball that scores nothing is just cradled on a
@@ -194,6 +219,22 @@ Every one of these caused a real ball trap, and they are all easy to reintroduce
   entry now rattles: a clunk, a grey flash of the mouth, and "TOO SLOW" or "WRONG ANGLE".
   It only speaks when the shot was plausibly meant for the ramp — a ball merely rolling
   past says nothing, or every ramp becomes a nag.
+- **A scoop must always kick the ball out.** The warp gates returned without
+  ejecting when the gate was cold, which left the ball sitting in the mouth with no
+  velocity, to be swallowed again on the next cooldown — forever. `resolveScoop` now
+  guarantees an eject in every path, including the ones it does not know about.
+- **Kick it toward somewhere there is room.** Ejecting straight up out of a gate meant
+  bouncing off the deck floor 300px above and dropping straight back in. `clearestDir()`
+  casts rays and throws the ball at open table instead.
+- **Never let one hold timer outlive its hole.** The cannon sets `hold = 99` to keep the
+  ball until you fire it, and that value survived the shot — so the *next* hole the ball
+  fell into inherited "hold forever" and never let go. A dead game, from one stale
+  number. Capture now always starts a fresh clock.
+- **"Stuck" is displacement, not speed.** The old nudger asked whether the ball was
+  moving slower than 34px/s; a ball creeping along a wall at 52 passes that test while
+  going nowhere. It now asks whether the ball has actually left where it was, with a
+  cradle on the flipper explicitly exempt — sitting on a flipper is good pinball, not a
+  stall.
 - **Pause has to stop the game, not just the physics.** Scoop hold timers, mission clocks
   and ball save all ran through a pause, so a scoop could resolve and pay while the game was
   frozen. Widening the hole capture made it happen often enough for the zoom-recovery test

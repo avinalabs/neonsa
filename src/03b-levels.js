@@ -72,10 +72,11 @@ function buildSpiral(L){
      they made. One closed curve cannot cross itself. */
   const gapA=1.955, gapB=1.187+Math.PI*2;      // 112 deg round to 68 deg
   ringWall(cx,cy,R,gapA,gapB,46,0.54);
-  const lx=cx+R*Math.cos(gapA), ly=cy+R*Math.sin(gapA);
-  const rx=cx+R*Math.cos(gapB), ry=cy+R*Math.sin(gapB);
-  W(lx,ly, cx-320,h-190, 0.42);  W(cx-320,h-190, cx-136,h-6, 0.24);
-  W(rx,ry, cx+320,h-190, 0.42);  W(cx+320,h-190, cx+136,h-6, 0.24);
+  /* No extra outlane guides here. The first version ran one from each gap edge
+     down and inwards, and it CROSSED the inlane guide that levelFlippers
+     builds — the V-trap this file's own comment warns about, rebuilt in the
+     same room. The arc drops the ball straight onto the inlane guide, which is
+     all the room needs. */
   levelFlippers(cx,h-208,250,180);
 
   /* THE EYE — the whole point of the room */
@@ -166,8 +167,13 @@ function buildForge(L){
   ];
   for(let i=0;i<4;i++)
     rollovers.push({x:200+i*(w-400)/3,y:h-560,r:26,lit:false,cool:-9,id:i,deck:0});
-  dropBanks.push({name:"SLAG",deck:0,targets:[0,1,2].map(i=>({
-    x:cx-110+i*110,y:1760,w:74,h:20,down:false,col:RD}))});
+  /* Drop targets are line segments with an `up` flag, not boxes — the first
+     version of this bank invented its own shape and was silently inert,
+     because the collision loop skips anything without `t.up`. */
+  dropBanks.push({type:"slag",word:"SLAG",resetT:0,targets:[0,1,2].map(i=>{
+    const tx=cx-110+i*110, ty=1760;
+    return{cx:tx,cy:ty,x1:tx-38,y1:ty,x2:tx+38,y2:ty,up:true,idx:i,fx:0};
+  })});
   spinners.push({x:cx,y:2000,r:40,ang:0,vel:0,cool:-9,col:OR,deck:0,name:"BELLOWS"});
   decor.push({x:cx,y:h*0.62,t:"THE FORGEWORKS",s:50,c:OR,a:0.10});
   decor.push({x:cx,y:h*0.62+58,t:"CLIMB",s:26,c:RD,a:0.13});
@@ -394,7 +400,12 @@ function leaveLevel(paid){
   for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
   const g=warpGate&&scoopBy(warpGate)||null;
   const x=g?g.x:830, y=g?g.y:2200;
-  const b=spawnBall(x,y-30,rand(-320,320),-rand(1500,2100));
+  /* Clear of the mouth, not in it. Returning the ball 30px above the gate put
+     it straight back inside the capture radius, so the gate swallowed the ball
+     it had just spat out — over and over, which is what a player sees as the
+     ball being stuck on the hole. The gate also gets a moment to close. */
+  const b=spawnBall(x,y-140,rand(-420,420),-rand(1900,2400));
+  if(g)g.cool=Math.max(g.cool,2.5);
   b.deck=deckAt(b.y).id;b.prevDeck=b.deck;
   ballInPlunger=false;
   ballSaveT=Math.max(ballSaveT,6);
@@ -447,7 +458,7 @@ function levelTick(dt){
     return;
   }
   if(!level)return;
-  levelT-=dt;
+  if(!levelHold)levelT-=dt;
   level.tick(dt,level);
   if(levelT<=0){warpExit(false);return;}
   if(levelT<6&&Math.floor(levelT+dt)!==Math.floor(levelT))SND.tick();
@@ -457,13 +468,13 @@ function levelTick(dt){
    bounce ten seconds in wastes the whole visit and the gate's cooldown. */
 function levelDrain(){
   if(!level)return false;
-  if(levelSaves>0){
-    levelSaves--;
+  if(levelHold||levelSaves>0){          // levelHold: the test harness keeps the room open
+    if(!levelHold)levelSaves--;
     const e=LEVEL_ENTRY[level.id]();
     const b=spawnBall(e.x,e.y,e.vx,e.vy);
     b.deck=0;b.prevDeck=0;
-    SND.save();flash(0.35,level.col2);
-    announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);
+    if(!levelHold){SND.save();flash(0.35,level.col2);
+      announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);}
     return true;
   }
   warpExit(false);

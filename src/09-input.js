@@ -470,10 +470,64 @@ window.__NSA__={
     flippers:flippers.length}:null;},
   gates(){return Object.assign({},gateCool);},
   warpsOff(){for(const k in gateCool)gateCool[k]=1e6;},
+  holdLevel(on){levelHold=!!on;},
+  /* restart a finished game without leaving whatever table we are testing */
+  revive(){
+    /* never act mid-transition, or warpExit is a no-op and the restart happens
+       inside the level with the tower still stashed */
+    for(let i=0;i<120&&warpT>0;i++)update(1/60);
+    const back=level&&level.id;
+    if(back){levelHold=false;warpExit(true);
+      for(let i=0;i<160&&level;i++)update(1/60);}
+    newGame();
+    /* keep every gate shut through the restart, or the fresh ball drops down
+       one of them and the sweep quietly continues in the wrong room */
+    for(const k in gateCool)gateCool[k]=1e6;
+    launchNow(0.6);for(let i=0;i<120;i++)update(1/60);
+    if(back){
+      gateCool[back]=0;warpBegin(back,null);
+      for(let i=0;i<160&&!level;i++)update(1/60);
+      for(const k in gateCool)gateCool[k]=1e6;
+      levelHold=true;
+    }
+    return back?(!!level&&level.id===back):!level;},
+  nanCount(){return nanRecoveries;},
+  rescueCount(){return rescues;},
+  clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
+  wallsNear(x,y,r){return walls.filter(w=>{
+    const c=closestSeg(x,y,w.x1,w.y1,w.x2,w.y2);
+    return Math.hypot(x-c.x,y-c.y)<r;
+  }).map(w=>`(${w.x1},${w.y1})->(${w.x2},${w.y2}) e=${w.e}`);},
+  /* every interactive thing on whatever table is currently loaded, with the
+     position a ball would have to reach to trigger it — the input to the
+     trap hunt in test/interactions.mjs */
+  hotspots(){
+    const out=[];
+    const add=(kind,name,x,y,r)=>{
+      if(!isFinite(x)||!isFinite(y))return;      // a malformed entry is its own bug
+      out.push({kind,name,x:Math.round(x),y:Math.round(y),r:Math.round(r||30)});};
+    for(const s of scoops)   add("scoop",s.name,s.x,s.y,s.r);
+    for(const r of rails)    add("rail",r.name,r.mouth.x,r.mouth.y,r.mouth.r);
+    bumpers.forEach((b,i)=>  add("bumper","bumper"+i,b.x,b.y,b.r));
+    slings.forEach((s,i)=>   add("sling","sling"+i,(s.ax+s.bx+s.cx)/3,(s.ay+s.by+s.cy)/3,40));
+    for(const s of spinners) add("spinner",s.name,s.x,s.y,s.r);
+    rollovers.forEach((r,i)=>add("rollover","roll"+i,r.x,r.y,r.r));
+    lanes.forEach((l,i)=>    add("lane","lane"+i,l.x,l.y,l.r));
+    for(const p2 of portals){add("portal",p2.name+"-a",p2.a.x,p2.a.y,p2.r);
+                             add("portal",p2.name+"-b",p2.b.x,p2.b.y,p2.r);}
+    for(const m of magnets)  add("magnet",m.name||"magnet",m.x,m.y,m.r);
+    for(const k of kickbacks)add("kickback",k.name,k.x,k.y,k.r);
+    for(const bank of dropBanks)
+      bank.targets.forEach((t,i)=>add("target",(bank.type||bank.name||"bank")+i,t.cx,t.cy,36));
+    bricks.forEach((b,i)=>{if(i%7===0)add("brick","brick"+i,b.x+b.w/2,b.y+b.h/2,b.w/2);});
+    flippers.forEach((f,i)=> add("flipper","flip"+i,f.px,f.py,30));
+    return out;
+  },
   scoopList(){return scoops.map(s=>({name:s.name,x:s.x,y:s.y,r:s.r,cool:+s.cool.toFixed(2),
     kind:s.kind,lit:!!s.lit}));},
   nudge(dir){doNudge(dir<0?-470:dir>0?470:0,dir===0?-560:-190);},
   railDir(name){const R=rails.find(r=>r.name===name);
+    if(!R)return null;
     const a=R.pts[0],b2=R.pts[1],l=Math.hypot(b2[0]-a[0],b2[1]-a[1]);
     return{x:(b2[0]-a[0])/l,y:(b2[1]-a[1])/l};},
   railList(){return rails.map(r=>({name:r.name,short:r.short,x:r.mouth.x,y:r.mouth.y,

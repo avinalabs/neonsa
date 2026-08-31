@@ -76,6 +76,7 @@ function deckAt(y){
   return DECKS[DECKS.length-1];
 }
 /* ---------- warp-level state (see 03b-levels.js) ---------- */
+let levelHold=false;         // test harness: freeze the visit clock
 let level=null;                 // the LEVELS entry we are inside, or null on the tower
 let levelT=0, levelGoal=0, levelProg=0, levelJack=0, levelDone=false, levelSaves=0;
 let warpT=0, warpDir=0, warpTo=null;     // transition timer / +1 in, -1 out
@@ -96,6 +97,8 @@ let bonusBank=0,endBonus=0,endBonusStep=0,endBonusTimer=0;
 let plungerCharge=0,charging=false,ballInPlunger=false,launchDeckSel=0;
 let tiltHeat=0,tilted=false,nudgesUsed=0;
 let shoveX=0,shoveY=0,shoveT=0;      // the table still moving after a nudge
+let nanRecoveries=0;                 // balls rescued from a non-finite state
+let rescues=0;                       // balls put back in play from somewhere unreachable
 let ballSaveT=0,skillDeck=-1,skillArmed=false;
 let stormMeter=0,surge=0,surgeT=0;
 let frenzyT=0,superBumperT=0,goldT=0;

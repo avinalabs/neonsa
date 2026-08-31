@@ -155,7 +155,8 @@ function spawnBall(x,y,vx,vy,opt){
     scoop:null,scoopT:0,magnet:null,
     deck:deckAt(y).id,prevDeck:deckAt(y).id,
     gold:false,plasma:0,phase:0,shield:false,heavy:0,ghost:false,
-    still:0,stuckLv:0,spawnT:timeSec,gone:false,inLane:false,launchT:-1
+    still:0,stuckLv:0,ax:undefined,ay:0,at:0,hx:undefined,hy:0,ht:0,onFlip:-9,
+    spawnT:timeSec,gone:false,inLane:false,launchT:-1
   },opt||{});
   balls.push(b);
   return b;
@@ -357,6 +358,7 @@ function physics(dt){
           const d=Math.hypot(b.x-cp.x,b.y-cp.y);
           if(d<bd){bd=d;best=cp;}
         }
+        if(!best)continue;                  // degenerate triangle, nothing to push off
         const gx=(s.ax+s.bx+s.cx)/3, gy=(s.ay+s.by+s.cy)/3;
         let ux=best.x-gx, uy=best.y-gy;
         const l=Math.hypot(ux,uy)||1; ux/=l; uy/=l;
@@ -420,6 +422,7 @@ function physics(dt){
       let nx=b.x-c.x,ny=b.y-c.y,d=Math.hypot(nx,ny);
       const rr=b.r+13;
       if(d<rr){
+        b.onFlip=timeSec;                 // cradling is legitimate — see the nudger
         if(d<0.0001){nx=0;ny=-1;d=0.0001;}else{nx/=d;ny/=d;}
         b.x=c.x+nx*rr;b.y=c.y+ny*rr;
         const rx=c.x-f.px,ry=c.y-f.py;
@@ -460,18 +463,87 @@ function physics(dt){
     /* ---- sensors ---- */
     sensors(b,dt);
 
-    /* ---- stuck nudger ---- */
-    const sp=Math.hypot(b.vx,b.vy);
-    if(sp<34)b.still+=dt; else {b.still=0;if(sp>240)b.stuckLv=0;}
-    if(b.still>1.5&&state==="PLAY"){
-      b.still=0;b.stuckLv++;
-      if(b.stuckLv>=3){b.stuckLv=0;b.vx+=rand(-700,700);b.vy-=rand(900,1500);spark(b.x,b.y,10,YL,300);}
-      else{b.vx+=rand(-280,280);b.vy-=rand(300,650);}
+    /* ---- stuck nudger ----
+       Stuck is about DISPLACEMENT, not speed. The old test asked "is the ball
+       moving slower than 34px/s", and a ball creeping along a wall at 52 is
+       moving fast enough to pass that while going absolutely nowhere — which
+       is precisely what a player calls stuck. This asks the question the soak
+       test asks: has the ball actually left where it was?
+
+       Two things are deliberately NOT stuck: a ball cradled on a flipper,
+       which is good pinball and must never be kicked away from you, and a ball
+       a scoop or rail is holding on purpose. Those pause the clock rather than
+       resetting it, so a ball cycling in and out of a hole still gets caught. */
+    const held=b.scoop||b.rail||b.magnet||b.inLane||b.launchT>=0;
+    const cradled=timeSec-(b.onFlip||-9)<0.35;
+
+    /* Second, slower watchdog. The nudger below frees the ball for a moment,
+       which resets its own escalation — so a ball that keeps being kicked and
+       keeps falling back into the same pocket can loop forever without ever
+       reaching the last resort. This one asks a question no kick can fake:
+       has the ball been within the same 340px of table for twelve seconds
+       while scoring nothing? A cradle pauses it, so holding a ball on the
+       flipper is never punished. */
+    if(b.hx===undefined){b.hx=b.x;b.hy=b.y;b.ht=0;}
+    if(held||cradled){/* paused on purpose */}
+    else if(Math.hypot(b.x-b.hx,b.y-b.hy)>340){b.hx=b.x;b.hy=b.y;b.ht=0;}
+    else{
+      b.ht+=dt;
+      if(b.ht>12&&state==="PLAY"&&timeSec-lastScoreTime>6){
+        b.hx=b.x;b.hy=b.y;b.ht=0;b.stuckLv=0;b.at=0;
+        b.x=PW*0.5;b.y=Math.min(PH*0.42,1200);b.vx=rand(-300,300);b.vy=380;
+        b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+        b.ax=b.x;b.ay=b.y;
+        ballSaveT=Math.max(ballSaveT,4);
+        spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
+        announce("BALL RETURNED",IC,false);
+        rescues++;
+      }
+    }
+    if(b.ax===undefined){b.ax=b.x;b.ay=b.y;b.at=0;}
+    if(held||cradled){
+      if(cradled){b.ax=b.x;b.ay=b.y;b.at=0;}
+    }else if(Math.hypot(b.x-b.ax,b.y-b.ay)>120){
+      b.ax=b.x;b.ay=b.y;b.at=0;b.stuckLv=0;
+    }else{
+      b.at+=dt;
+      if(b.at>3.2&&state==="PLAY"){
+        b.at=0;b.ax=b.x;b.ay=b.y;b.stuckLv++;
+        if(b.stuckLv>=3){
+          /* Three escalations and it is still there, so it is somewhere a kick
+             cannot reach out of — a sealed pocket, a seam, something nobody
+             thought of. Put it back in play rather than leave a dead game:
+             whatever the cause, the player should never have to reload. */
+          b.stuckLv=0;
+          b.x=PW*0.5;b.y=Math.min(PH*0.42,1200);b.vx=rand(-300,300);b.vy=380;
+          b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+          ballSaveT=Math.max(ballSaveT,4);
+          spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
+          announce("BALL RETURNED",IC,false);
+          rescues++;
+        }else if(b.stuckLv>=2){
+          b.vx+=rand(-900,900);b.vy-=rand(1300,1900);
+          spark(b.x,b.y,12,YL,340);
+          floatText(b.x,b.y-42,"UNSTUCK",IC,18);
+        }else{b.vx+=rand(-420,420);b.vy-=rand(600,1000);spark(b.x,b.y,5,IC,220);}
+      }
     }
 
     /* ---- deck tracking ---- */
     const dk=deckAt(b.y).id;
     if(dk!==b.deck){b.prevDeck=b.deck;b.deck=dk;onDeckChange(b,dk,b.prevDeck);}
+
+    /* ---- a ball that has stopped being a number ----
+       One non-finite value used to throw inside the collision code on every
+       subsequent frame, which freezes the whole game while the last drawn
+       frame stays on screen — indistinguishable, from the player's side, from
+       the ball being stuck. Whatever produced it, the recovery is the same. */
+    if(!isFinite(b.x)||!isFinite(b.y)||!isFinite(b.vx)||!isFinite(b.vy)){
+      b.x=PW*0.5;b.y=Math.min(PH*0.5,900);b.vx=0;b.vy=200;
+      b.rail=null;b.scoop=null;b.magnet=null;b.trail.length=0;
+      b.still=0;b.stuckLv=0;b.ax=undefined;b.at=0;b.hx=undefined;b.ht=0;
+      nanRecoveries++;
+    }
 
     /* ---- out of bounds / drain ---- */
     if(b.x<-80||b.x>PW+120||b.y<-160){
@@ -492,6 +564,35 @@ function physics(dt){
       if(!levelDrain())onDrain(b);
     }
   }
+}
+
+/* How far a ball could travel from here in a given direction before it hits
+   something. Used to throw a ball out of a hole toward open table instead of
+   toward whatever happens to be overhead — ejecting straight up from a scoop
+   with a deck floor 300px above meant the ball bounced and dropped right back
+   in, forever. */
+function rayClearance(x,y,dx,dy,cap){
+  let best=cap;
+  for(const w of walls){
+    const ex=w.x2-w.x1, ey=w.y2-w.y1;
+    const den=dx*ey-dy*ex;
+    if(Math.abs(den)<1e-9)continue;
+    const t=((w.x1-x)*ey-(w.y1-y)*ex)/den;      // along the ray
+    const u=((w.x1-x)*dy-(w.y1-y)*dx)/den;      // along the segment
+    if(t>0&&t<best&&u>=0&&u<=1)best=t;
+  }
+  return best;
+}
+/* the direction out of (x,y) with the most room, preferring not straight down */
+function clearestDir(x,y){
+  let bestA=-Math.PI/2, bestD=-1;
+  for(let i=0;i<24;i++){
+    const a=-Math.PI+i*(Math.PI*2/24);
+    if(Math.sin(a)>0.45)continue;               // never fire it at the drain
+    const d=rayClearance(x,y,Math.cos(a),Math.sin(a),1200)*(1-Math.sin(a)*0.15);
+    if(d>bestD){bestD=d;bestA=a;}
+  }
+  return bestA;
 }
 
 function pushTrail(b){
@@ -576,7 +677,12 @@ function sensors(b,dt){
       d=dist(s.x,s.y,c.x,c.y);
     }else d=dist(b.x,b.y,s.x,s.y);
     if(d<s.r){
-      b.scoop=s;b.scoopT=0;s.cool=1.6;
+      /* Clear the hold timer on capture. The cannon sets hold=99 to keep the
+         ball until you fire it, and that value used to survive the shot — so
+         the NEXT hole the ball fell into inherited "hold forever" and never
+         let go. That is a dead game, and it is exactly what a player sees as a
+         ball welded to a gate. A capture always starts a fresh clock. */
+      b.scoop=s;b.scoopT=0;s.cool=1.6;b.hold=undefined;
       onScoop(s,b);
     }
   }
