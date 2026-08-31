@@ -49,7 +49,8 @@ And **altitude is the multiplier**, which is what makes climbing worth the risk:
 | `Z` `X` `W` | Nudge left / right / up. Three nudges in quick succession and you TILT |
 | `C` `P` `M` | Overview camera · pause · mute |
 
-**Phone** — two large FLIP pads in the bottom corners with NUDGE beside them, and LAUNCH
+**Phone** — two large FLIP pads in the bottom corners (80×80 in portrait, held in from the
+screen edge, because a thumb rests inboard of the corner) with NUDGE beside them, and LAUNCH
 parked above-left of the right pad so the bottom centre of the screen — where the flippers
 are — belongs entirely to the table. You can also just tap the left or right half of the
 table, and **both thumbs work at once**: lifting one finger never drops a flipper another
@@ -123,7 +124,7 @@ node build.mjs --check # fail if index.html is stale (CI runs this)
 ```bash
 npm install
 npx playwright install chromium
-npm test               # smoke: 7 viewports, pads vs ball, game-over flow, multi-touch
+npm test               # smoke: 7 viewports, pads vs ball, zoom recovery, game-over, multi-touch
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
 ```
@@ -181,6 +182,32 @@ And on rendering: neon is drawn as **layered strokes**, wide-and-faint under
 narrow-and-bright, over `Path2D` geometry baked once at load. It used to use canvas
 `shadowBlur`, which cost 120 blur passes a frame and roughly doubled frame time.
 `test/perf.mjs` guards against that coming back.
+
+---
+
+## iOS will pinch-zoom the page out from under you
+Two thumbs on the flipper pads that drift slightly read as a pinch, and `user-scalable=no`
+has been ignored since iOS 10. The page carries the usual prevention — `touch-action:none`,
+`gesturestart`/`change`/`end` cancelled, multi-touch `touchstart` **and** `touchmove`
+cancelled, a double-tap guard — and it still got beaten in the field: a report came back
+with the page sitting at **1.62×**, panned to the bottom-right, score and half the table
+off-screen.
+
+Nothing the canvas draws can help there, because the whole document is magnified — the DOM
+buttons measured 1.62× too, which is how you tell this apart from a camera bug from one
+screenshot. So it is treated as a state to detect and escape, not one to hope never happens:
+
+- `visualViewport.scale > 1.03` **pauses the simulation immediately** — a ball draining
+  where you cannot see it is the part that actually costs you a game — without opening the
+  pause card, which is laid out in page coordinates and would be off-screen too.
+- A banner is positioned onto `visualViewport`'s visible rect and counter-scaled by
+  `1/scale`, so it reads at a normal size however far the zoom went.
+- Its button re-asserts `maximum-scale=1` on the viewport meta and restores it a moment
+  later. That is the one thing that reliably snaps iOS Safari back to 1, and it only works
+  from a user gesture — hence a button rather than a silent fix.
+- When the scale returns to 1 the banner clears and play resumes on its own.
+
+`test/smoke.mjs` fakes a pinch by overriding `visualViewport` and checks all of it.
 
 ---
 

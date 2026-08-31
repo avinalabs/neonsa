@@ -226,5 +226,76 @@ console.log("\ntouch controls");
   await page.close();
 }
 
+// the page getting pinch-zoomed out from under the game, and getting back
+console.log("\nzoom recovery");
+{
+  const { page, errors } = await openGame(browser, {
+    width: 390,
+    height: 844,
+    touch: true,
+  });
+  await page.evaluate(() => {
+    document.getElementById("startScreen").classList.add("hidden");
+    window.__NSA__.start();
+    window.__NSA__.launch(0.5);
+  });
+  await page.waitForTimeout(900);
+  check(
+    results,
+    "no zoom banner at scale 1",
+    await page.evaluate(() =>
+      document.getElementById("zoomFix").classList.contains("hidden"),
+    ),
+  );
+  /* stand in for a pinch: visualViewport is the only thing that reports it */
+  const zoomed = await page.evaluate(async () => {
+    const vv = window.visualViewport;
+    const fake = { scale: 1.62, offsetLeft: 120, offsetTop: 210, width: 241, height: 521 };
+    for (const k of Object.keys(fake))
+      Object.defineProperty(vv, k, { get: () => fake[k], configurable: true });
+    vv.dispatchEvent(new Event("resize"));
+    await new Promise((r) => setTimeout(r, 150));
+    const el = document.getElementById("zoomFix");
+    return {
+      shown: !el.classList.contains("hidden"),
+      box: [el.style.left, el.style.top, el.style.width, el.style.height].join(),
+      score: window.__NSA__.info().score,
+    };
+  });
+  check(results, "a zoomed page raises the banner", zoomed.shown);
+  check(
+    results,
+    "the banner lands on the part of the page you can still see",
+    zoomed.box === "120px,210px,241px,521px",
+    zoomed.box,
+  );
+  await page.evaluate(() => window.__NSA__.step(200));
+  await page.waitForTimeout(400);
+  const frozen = await page.evaluate(() => window.__NSA__.info().score);
+  check(
+    results,
+    "the ball does not drain while you cannot see it",
+    frozen === zoomed.score,
+    `${zoomed.score} -> ${frozen}`,
+  );
+  const back = await page.evaluate(async () => {
+    const vv = window.visualViewport;
+    Object.defineProperty(vv, "scale", { get: () => 1, configurable: true });
+    vv.dispatchEvent(new Event("resize"));
+    await new Promise((r) => setTimeout(r, 150));
+    return document.getElementById("zoomFix").classList.contains("hidden");
+  });
+  check(results, "banner clears when the zoom does", back);
+  await page.evaluate(() => window.__NSA__.step(200));
+  await page.waitForTimeout(400);
+  check(
+    results,
+    "play resumes by itself",
+    (await page.evaluate(() => window.__NSA__.info().score)) !== frozen,
+  );
+  check(results, "zoom recovery: no errors", errors.length === 0, errors[0] || "");
+  await page.close();
+}
+
 await browser.close();
 report(results, "smoke");

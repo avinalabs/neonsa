@@ -117,6 +117,16 @@
     border:1px solid rgba(255,233,59,.35);border-radius:9px;padding:6px 12px;
     background:rgba(255,233,59,.06);max-width:min(600px,94%)}
   @media (max-height:560px){.tag.a2hs{margin-top:6px;padding:5px 10px;letter-spacing:.3px}}
+  /* positioned onto the VISIBLE part of a zoomed page from 09-input.js, and
+     counter-scaled so it reads at a normal size however far in the zoom went */
+  #zoomFix{position:fixed;z-index:60;display:flex;align-items:center;justify-content:center;
+    background:rgba(2,2,12,.9);padding:2em;font-size:13px}
+  #zoomFix .zbox{display:flex;flex-direction:column;align-items:center;gap:.7em;text-align:center;
+    border:2px solid var(--yl);border-radius:1em;padding:1.4em 1.6em;max-width:26em;
+    background:rgba(6,8,30,.96);box-shadow:0 0 3em rgba(255,233,59,.28)}
+  #zoomFix b{color:var(--yl);font-size:1.25em;letter-spacing:.14em}
+  #zoomFix span{color:#bcd8ff;font-size:1em;line-height:1.5;letter-spacing:.04em}
+  #zoomFix .nbtn{margin-top:.3em;font-size:1.1em;padding:.6em 1.6em}
   #loadNote{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#5f7fa8;
     font-size:13px;letter-spacing:3px;z-index:5}
   /* landscape phones: compress the card so INSERT COIN stays on screen */
@@ -172,13 +182,16 @@
      and parks above-left of the right flipper pad, so the whole middle of the
      bottom edge belongs to the table. */
   @media (max-width:600px){
-    #touchUI{padding:9px 6px}
-    #touchUI .tbtn{width:48px;height:48px;font-size:9px;border-width:2px;line-height:1.15}
-    #touchUI .tbtn.flip{width:68px;height:68px;font-size:11px;border-width:3px}
-    #touchUI .tbtn.launch{width:64px;height:52px;border-radius:26px;font-size:11px;
+    /* Pulled in from the screen edges: a thumb resting naturally on a phone sits
+       inboard of the corner, not on it. Bigger pads too — they cost 6px of the
+       camera's framing band and buy a much easier flip. */
+    #touchUI{padding:7px 22px}
+    #touchUI .tbtn{width:52px;height:52px;font-size:9px;border-width:2px;line-height:1.15}
+    #touchUI .tbtn.flip{width:80px;height:80px;font-size:12px;border-width:3px}
+    #touchUI .tbtn.launch{width:70px;height:54px;border-radius:27px;font-size:11px;
       background:rgba(4,8,28,.62);backdrop-filter:blur(2px)}
-    #touchUI .tgrp{gap:6px}
-    #touchUI .tgrp:nth-child(2){position:absolute;right:52px;bottom:82px}
+    #touchUI .tgrp{gap:7px}
+    #touchUI .tgrp:nth-child(2){position:absolute;right:78px;bottom:100px}
     #hudBtns{gap:5px;top:8px;right:8px}
     #hudBtns .mini{padding:5px 8px;font-size:11px}
     .card{padding:16px 14px}
@@ -237,6 +250,18 @@
     </div>
     <button class="nbtn" id="startBtn">&#9889; INSERT COIN &#9889;</button>
     <div class="tag desk-only" style="margin-top:10px">or press <kbd>ENTER</kbd></div>
+  </div>
+</div>
+
+<!-- iOS can still pinch-zoom the page out from under the game: two thumbs on the
+     flipper pads that drift slightly read as a pinch. When that happens the score
+     and half the table are off-screen, so the game pauses and offers a way back
+     rather than letting the ball drain where nobody can see it. -->
+<div id="zoomFix" class="hidden">
+  <div class="zbox">
+    <b>THE PAGE IS ZOOMED IN</b>
+    <span>Half the table is off-screen. Tap to fit it back, or pinch out yourself.</span>
+    <button class="nbtn sm" id="zoomFixBtn">FIT THE SCREEN</button>
   </div>
 </div>
 
@@ -3339,7 +3364,7 @@ function hudTopH(){return topBarH()+hudTopSmooth;}
      down to the pads, which float in the corners. The machine extends
      further down the screen without the ball ever hiding behind a button.
    Landscape floats every pad, so there the two are the same. */
-function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?92:112)):Math.round(10*uiScale());}
+function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?98:112)):Math.round(10*uiScale());}
 function clipBotH(){return IS_TOUCH?(isShort()?18:14):Math.round(10*uiScale());}
 /* Same trade at the top as at the bottom on a short screen: the table is drawn
    up behind the instrument bar, which only tints it, while the camera still
@@ -3351,7 +3376,7 @@ function clipTopY(){return IS_TOUCH&&isShort()?Math.round(topBarH()*0.42):playTo
 function launchPadBox(){
   if(!IS_TOUCH)return null;
   return isShort()?{x:VW-152,y:VH-142,w:88,h:56}
-                  :{x:VW-116,y:VH-134,w:64,h:52};
+                  :{x:VW-148,y:VH-154,w:70,h:54};
 }
 function hudTick(dt){
   const want=actionPanelH();
@@ -4036,6 +4061,14 @@ addEventListener("keyup",e=>{
 ["gesturestart","gesturechange","gestureend"].forEach(t=>{
   document.addEventListener(t,e=>e.preventDefault(),{passive:false});
 });
+/* A pinch is already under way by the first multi-touch MOVE, so refuse the
+   second finger at touchstart as well. The pads and the table run on pointer
+   events, which fire before these and are unaffected by cancelling the touch
+   default, so two-thumb play is untouched. */
+const zoomSafe=t=>t&&/INPUT|TEXTAREA/.test(t.tagName||"");
+document.addEventListener("touchstart",e=>{
+  if(e.touches.length>1&&!zoomSafe(e.target))e.preventDefault();
+},{passive:false});
 document.addEventListener("touchmove",e=>{
   if(e.touches.length>1)e.preventDefault();          // multi-touch = pinch attempt
 },{passive:false});
@@ -4048,6 +4081,65 @@ document.addEventListener("touchend",e=>{
 document.addEventListener("contextmenu",e=>{
   if(e.target&&e.target.id==="initInput")return;
   e.preventDefault();                                 // long-press "Copy / Look Up"
+});
+
+/* ---------- zoom watchdog ----------
+   All of the above is prevention, and prevention has already been beaten once:
+   a report came in of the page sitting at 1.6x with the score and half the
+   table panned off-screen. Nothing the canvas draws can help there — the whole
+   document is magnified, buttons included — so treat it as a state to detect
+   and get out of, not one to hope never happens.
+
+   Pause immediately, because a ball draining where you cannot see it is the
+   part that actually costs you a game. Then offer the way back: re-asserting
+   maximum-scale on the viewport meta is the one thing that reliably snaps iOS
+   Safari to 1, and it only works from a user gesture, which is what the button
+   is for. */
+const vvp=window.visualViewport;
+let zoomedOut=false, zoomPaused=false;
+function vScale(){return vvp?(vvp.scale||1):1;}
+function placeZoomFix(){
+  const el=$("zoomFix");
+  if(!vvp){el.style.inset="0";return;}
+  const k=1/Math.max(vScale(),0.01);
+  el.style.left=vvp.offsetLeft+"px";
+  el.style.top=vvp.offsetTop+"px";
+  el.style.width=vvp.width+"px";
+  el.style.height=vvp.height+"px";
+  el.style.fontSize=(13*k)+"px";
+}
+function checkZoom(){
+  const z=vScale()>1.03;
+  if(z){
+    placeZoomFix();
+    if(!zoomedOut){
+      zoomedOut=true;
+      /* freeze the simulation without opening the pause card — that card is laid
+         out in page coordinates and would be off-screen too */
+      if((state==="PLAY"||state==="BONUS")&&!paused){zoomPaused=true;paused=true;}
+      $("zoomFix").classList.remove("hidden");
+    }
+  }else if(zoomedOut){
+    zoomedOut=false;
+    $("zoomFix").classList.add("hidden");
+    if(zoomPaused){zoomPaused=false;paused=false;lastT=performance.now();}
+  }
+}
+if(vvp){
+  vvp.addEventListener("resize",checkZoom);
+  vvp.addEventListener("scroll",checkZoom);
+  setInterval(checkZoom,700);
+}
+$("zoomFixBtn").addEventListener("click",()=>{
+  const m=document.querySelector('meta[name="viewport"]');
+  if(m){
+    const keep=m.getAttribute("content");
+    m.setAttribute("content","width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+    void document.body.offsetHeight;                  // force the re-layout
+    setTimeout(()=>{m.setAttribute("content",keep);checkZoom();},400);
+  }
+  window.scrollTo(0,0);
+  setTimeout(checkZoom,600);
 });
 
 /* touch */

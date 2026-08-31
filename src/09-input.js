@@ -177,6 +177,14 @@ addEventListener("keyup",e=>{
 ["gesturestart","gesturechange","gestureend"].forEach(t=>{
   document.addEventListener(t,e=>e.preventDefault(),{passive:false});
 });
+/* A pinch is already under way by the first multi-touch MOVE, so refuse the
+   second finger at touchstart as well. The pads and the table run on pointer
+   events, which fire before these and are unaffected by cancelling the touch
+   default, so two-thumb play is untouched. */
+const zoomSafe=t=>t&&/INPUT|TEXTAREA/.test(t.tagName||"");
+document.addEventListener("touchstart",e=>{
+  if(e.touches.length>1&&!zoomSafe(e.target))e.preventDefault();
+},{passive:false});
 document.addEventListener("touchmove",e=>{
   if(e.touches.length>1)e.preventDefault();          // multi-touch = pinch attempt
 },{passive:false});
@@ -189,6 +197,65 @@ document.addEventListener("touchend",e=>{
 document.addEventListener("contextmenu",e=>{
   if(e.target&&e.target.id==="initInput")return;
   e.preventDefault();                                 // long-press "Copy / Look Up"
+});
+
+/* ---------- zoom watchdog ----------
+   All of the above is prevention, and prevention has already been beaten once:
+   a report came in of the page sitting at 1.6x with the score and half the
+   table panned off-screen. Nothing the canvas draws can help there — the whole
+   document is magnified, buttons included — so treat it as a state to detect
+   and get out of, not one to hope never happens.
+
+   Pause immediately, because a ball draining where you cannot see it is the
+   part that actually costs you a game. Then offer the way back: re-asserting
+   maximum-scale on the viewport meta is the one thing that reliably snaps iOS
+   Safari to 1, and it only works from a user gesture, which is what the button
+   is for. */
+const vvp=window.visualViewport;
+let zoomedOut=false, zoomPaused=false;
+function vScale(){return vvp?(vvp.scale||1):1;}
+function placeZoomFix(){
+  const el=$("zoomFix");
+  if(!vvp){el.style.inset="0";return;}
+  const k=1/Math.max(vScale(),0.01);
+  el.style.left=vvp.offsetLeft+"px";
+  el.style.top=vvp.offsetTop+"px";
+  el.style.width=vvp.width+"px";
+  el.style.height=vvp.height+"px";
+  el.style.fontSize=(13*k)+"px";
+}
+function checkZoom(){
+  const z=vScale()>1.03;
+  if(z){
+    placeZoomFix();
+    if(!zoomedOut){
+      zoomedOut=true;
+      /* freeze the simulation without opening the pause card — that card is laid
+         out in page coordinates and would be off-screen too */
+      if((state==="PLAY"||state==="BONUS")&&!paused){zoomPaused=true;paused=true;}
+      $("zoomFix").classList.remove("hidden");
+    }
+  }else if(zoomedOut){
+    zoomedOut=false;
+    $("zoomFix").classList.add("hidden");
+    if(zoomPaused){zoomPaused=false;paused=false;lastT=performance.now();}
+  }
+}
+if(vvp){
+  vvp.addEventListener("resize",checkZoom);
+  vvp.addEventListener("scroll",checkZoom);
+  setInterval(checkZoom,700);
+}
+$("zoomFixBtn").addEventListener("click",()=>{
+  const m=document.querySelector('meta[name="viewport"]');
+  if(m){
+    const keep=m.getAttribute("content");
+    m.setAttribute("content","width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+    void document.body.offsetHeight;                  // force the re-layout
+    setTimeout(()=>{m.setAttribute("content",keep);checkZoom();},400);
+  }
+  window.scrollTo(0,0);
+  setTimeout(checkZoom,600);
 });
 
 /* touch */

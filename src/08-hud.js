@@ -31,7 +31,7 @@ function hudTopH(){return topBarH()+hudTopSmooth;}
      down to the pads, which float in the corners. The machine extends
      further down the screen without the ball ever hiding behind a button.
    Landscape floats every pad, so there the two are the same. */
-function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?92:112)):Math.round(10*uiScale());}
+function hudBottomH(){return IS_TOUCH?(isShort()?18:(VW<600?98:112)):Math.round(10*uiScale());}
 function clipBotH(){return IS_TOUCH?(isShort()?18:14):Math.round(10*uiScale());}
 /* Same trade at the top as at the bottom on a short screen: the table is drawn
    up behind the instrument bar, which only tints it, while the camera still
@@ -43,7 +43,7 @@ function clipTopY(){return IS_TOUCH&&isShort()?Math.round(topBarH()*0.42):playTo
 function launchPadBox(){
   if(!IS_TOUCH)return null;
   return isShort()?{x:VW-152,y:VH-142,w:88,h:56}
-                  :{x:VW-116,y:VH-134,w:64,h:52};
+                  :{x:VW-148,y:VH-154,w:70,h:54};
 }
 function hudTick(dt){
   const want=actionPanelH();
