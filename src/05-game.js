@@ -955,6 +955,39 @@ function unlock(id,title,desc){
 }
 
 /* ============================================================
+   BALL SEARCH
+   ============================================================ */
+/* Twenty-four seconds of play with nothing scored means the ball is not in
+   play any more — it is parked. Almost always that is a deliberate cradle with
+   both flippers held up, which no amount of kicking can end while the flippers
+   stay where they are, so the search drops them for a moment as well as
+   shoving the ball. Any real machine does this; without it a player who never
+   lets go of the buttons cannot lose, which was the whole complaint. */
+const SEARCH_AFTER=24;
+function ballSearch(){
+  searchCool=8;flipRelax=1.1;
+  let any=false;
+  for(const b of balls){
+    if(b.ghost||b.scoop||b.rail||b.magnet||b.inLane||b.launchT>=0)continue;
+    any=true;
+    b.vx+=rand(-620,620);b.vy+=rand(120,420);
+    b.at=0;b.ax=b.x;b.ay=b.y;b.stuckLv=0;
+    spark(b.x,b.y,10,IC,240);
+  }
+  if(!any){searchCool=3;flipRelax=0;return;}
+  searches++;
+  announce("BALL SEARCH",IC,false);
+  SND.nudge();shake(11);
+}
+function searchTick(dt){
+  if(searchCool>0)searchCool-=dt;
+  if(flipRelax>0)flipRelax-=dt;
+  if(state!=="PLAY"||ballInPlunger||warpT>0)return;
+  if(searchCool>0||!balls.length)return;
+  if(timeSec-lastScoreTime>SEARCH_AFTER)ballSearch();
+}
+
+/* ============================================================
    BALL LIFECYCLE
    ============================================================ */
 let savesThisBall=0;

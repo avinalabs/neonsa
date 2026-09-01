@@ -16,7 +16,7 @@ function newGame(){
   mbActive=false;mbJackpot=1;lockedBalls=0;lockLit=false;
   ballNum=1;extraBalls=0;extrasEarned=0;ballsPlayed=0;bonusBank=0;endBonus=0;
   savesThisBall=0;
-  tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;
+  tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;searchCool=0;flipRelax=0;searches=0;
   peakDeck=0;visited=[false,false,false,false,false];
   stormLetters=[false,false,false,false,false];chaosLetters=[false,false,false,false,false];
   kickLit=[true,false];magGrabs=3;crownHits=0;
@@ -504,6 +504,7 @@ window.__NSA__={
   nanCount(){return nanRecoveries;},
   rescueCount(){return rescues;},
   rescueLog(){return rescueLog.slice();},
+  searchInfo(){return{since:+(timeSec-lastScoreTime).toFixed(1),cool:+searchCool.toFixed(1),relax:+flipRelax.toFixed(2),n:searches};},
   extras(){return{held:extraBalls,earned:extrasEarned,maxHeld:MAX_EXTRA,maxGame:MAX_EXTRA_GAME};},
   clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
   wallsNear(x,y,r){return walls.filter(w=>{

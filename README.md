@@ -152,7 +152,7 @@ npm run test:perf      # frame-time budget
 
 The page exposes `window.__NSA__` as a test harness — `start()`, `launch(power)`,
 `step(frames)`, `info()`, `flip(side, on)`, `forceMission(id)`, `forceBoss()`,
-`drain()`, `flipState()`, `warp(id)`, `extras()`, `rescueLog()`. `step()` drives the simulation directly instead of waiting on
+`drain()`, `flipState()`, `warp(id)`, `extras()`, `rescueLog()`, `searchInfo()`. `step()` drives the simulation directly instead of waiting on
 real frames, so the soak test plays 300 seconds of pinball in about four.
 
 **`test/interactions.mjs` goes looking instead of waiting.** The soak plays and hopes to
@@ -207,6 +207,18 @@ GAME OVER. The economy it guards:
 | Draining inside a warp room | free twice, then it costs the ball |
 
 Eight balls is the ceiling, so every game ends.
+
+**Except it didn't, and CI caught the last way out.** Hold both flippers up and
+the ball parks in the V between the tips, where it will sit until the heat death
+of the universe: no drain, no drain rule, no game over. The suite's third player
+does exactly that, and it survived the full run. A real machine solves this with
+a ball search — nothing hits a switch for long enough, so it fires every coil to
+shake the ball loose — and this one watches the score for the same reason. After
+**24 seconds with nothing scored**, `ballSearch()` shoves every free ball and,
+crucially, drops the flippers for a beat, because no amount of shoving ends a
+cradle while the flippers stay up. It fires 0 times in a normal game and two or
+three times against a player who never lets go, which is the shape it should
+have; the soak asserts it stays that rare.
 
 **A tilt ends with the ball that earned it.** It used to clear only in `endOfBallFinish()`,
 which a ball save skips entirely — so a tilt while the save was running meant dead

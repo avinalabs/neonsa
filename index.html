@@ -457,6 +457,13 @@ let frenzyT=0,superBumperT=0,goldT=0;
 let mbActive=false,mbJackpot=1,lockedBalls=0,lockLit=false;
 let magGrabs=3,magGrabCool=0;
 let excite=0,lastScoreTime=-99;
+/* Ball search. A real machine watches its switches, and when nothing has been
+   hit for long enough it fires every coil to shake the ball loose. This one
+   watches the score for the same reason: holding both flippers up traps a ball
+   in the V between the tips indefinitely, and a player who never lets go can
+   never lose — which is exactly the bug this was all about. relaxT is how long
+   the flippers refuse to hold, which is what actually ends a cradle. */
+let searchCool=0, flipRelax=0, searches=0;
 let peakDeck=0,visited=[false,false,false,false,false];
 let stormLetters=[false,false,false,false,false];
 let chaosLetters=[false,false,false,false,false];
@@ -1648,8 +1655,9 @@ function circleRect(b,rx,ry,rw,rh){
 function stepFlippers(dt){
   const boost=surgeT>0?1.35:1;
   for(const f of flippers){
-    const target=f.key?f.up:f.rest;
-    const spd=(f.key?24:13)*boost;
+    const key=f.key&&flipRelax<=0;
+    const target=key?f.up:f.rest;
+    const spd=(key?24:13)*boost;
     const prev=f.a;
     f.a+=clamp(target-f.a,-spd*dt,spd*dt);
     f.omega=(f.a-prev)/dt;
@@ -3085,6 +3093,39 @@ function unlock(id,title,desc){
 }
 
 /* ============================================================
+   BALL SEARCH
+   ============================================================ */
+/* Twenty-four seconds of play with nothing scored means the ball is not in
+   play any more — it is parked. Almost always that is a deliberate cradle with
+   both flippers held up, which no amount of kicking can end while the flippers
+   stay where they are, so the search drops them for a moment as well as
+   shoving the ball. Any real machine does this; without it a player who never
+   lets go of the buttons cannot lose, which was the whole complaint. */
+const SEARCH_AFTER=24;
+function ballSearch(){
+  searchCool=8;flipRelax=1.1;
+  let any=false;
+  for(const b of balls){
+    if(b.ghost||b.scoop||b.rail||b.magnet||b.inLane||b.launchT>=0)continue;
+    any=true;
+    b.vx+=rand(-620,620);b.vy+=rand(120,420);
+    b.at=0;b.ax=b.x;b.ay=b.y;b.stuckLv=0;
+    spark(b.x,b.y,10,IC,240);
+  }
+  if(!any){searchCool=3;flipRelax=0;return;}
+  searches++;
+  announce("BALL SEARCH",IC,false);
+  SND.nudge();shake(11);
+}
+function searchTick(dt){
+  if(searchCool>0)searchCool-=dt;
+  if(flipRelax>0)flipRelax-=dt;
+  if(state!=="PLAY"||ballInPlunger||warpT>0)return;
+  if(searchCool>0||!balls.length)return;
+  if(timeSec-lastScoreTime>SEARCH_AFTER)ballSearch();
+}
+
+/* ============================================================
    BALL LIFECYCLE
    ============================================================ */
 let savesThisBall=0;
@@ -3230,6 +3271,7 @@ function update(dt){
   bgPulse*=Math.pow(0.05,dt);
   excite=Math.max(mbActive||boss.active||wizard.active?0.55:0,excite-dt*0.16);
   if(timeSec-lastScoreTime<0.6)excite=clamp(excite+dt*0.5,0,1);
+  searchTick(dt);
   }else{
     /* presentation only, so a paused screen still breathes */
     shakeMag*=Math.pow(0.02,dt);
@@ -5107,7 +5149,7 @@ function newGame(){
   mbActive=false;mbJackpot=1;lockedBalls=0;lockLit=false;
   ballNum=1;extraBalls=0;extrasEarned=0;ballsPlayed=0;bonusBank=0;endBonus=0;
   savesThisBall=0;
-  tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;
+  tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;searchCool=0;flipRelax=0;searches=0;
   peakDeck=0;visited=[false,false,false,false,false];
   stormLetters=[false,false,false,false,false];chaosLetters=[false,false,false,false,false];
   kickLit=[true,false];magGrabs=3;crownHits=0;
@@ -5595,6 +5637,7 @@ window.__NSA__={
   nanCount(){return nanRecoveries;},
   rescueCount(){return rescues;},
   rescueLog(){return rescueLog.slice();},
+  searchInfo(){return{since:+(timeSec-lastScoreTime).toFixed(1),cool:+searchCool.toFixed(1),relax:+flipRelax.toFixed(2),n:searches};},
   extras(){return{held:extraBalls,earned:extrasEarned,maxHeld:MAX_EXTRA,maxGame:MAX_EXTRA_GAME};},
   clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
   wallsNear(x,y,r){return walls.filter(w=>{

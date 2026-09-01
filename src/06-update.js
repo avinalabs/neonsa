@@ -50,6 +50,7 @@ function update(dt){
   bgPulse*=Math.pow(0.05,dt);
   excite=Math.max(mbActive||boss.active||wizard.active?0.55:0,excite-dt*0.16);
   if(timeSec-lastScoreTime<0.6)excite=clamp(excite+dt*0.5,0,1);
+  searchTick(dt);
   }else{
     /* presentation only, so a paused screen still breathes */
     shakeMag*=Math.pow(0.02,dt);

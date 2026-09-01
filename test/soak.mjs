@@ -78,7 +78,7 @@ for (let run = 0; run < RUNS; run++) {
       return { found, over, serves: N.drains(), score: N.info().score,
                rescues: N.rescueCount(), nan: N.nanCount(),
                ballNum: N.info().ballNum, extras: N.extras(),
-               rescueLog: N.rescueLog() };
+               rescueLog: N.rescueLog(), searches: N.searchInfo().n };
     },
     { seconds: SECONDS, box: BOX, holdFrames: HOLD_FRAMES },
   );
@@ -90,7 +90,7 @@ for (let run = 0; run < RUNS; run++) {
   totalServes += out.serves;
   progress.push(out);
   console.log(
-    `  run ${run + 1}/${RUNS}: ${out.found.length} stalls, ${out.serves} serves, score ${out.score.toLocaleString()}${out.over ? ", game finished" : ""}`,
+    `  run ${run + 1}/${RUNS}: ${out.found.length} stalls, ${out.serves} serves, ${out.searches} searches, score ${out.score.toLocaleString()}${out.over ? ", game finished" : ""}`,
   );
   check(results, `run ${run + 1}: no page errors`, errors.length === 0, errors[0] || "");
   await page.close();
@@ -165,4 +165,10 @@ check(results, "the last-resort ball return stays rare",
 }
 check(results, "no ball ever stops being a number", nanned === 0, `${nanned} recoveries`);
 check(results, "balls actually drain", totalServes > RUNS, `${totalServes} serves`);
+/* The ball search is for stalemates, not for play. Firing it often would mean
+   24 seconds keep passing with nothing scored while a ball is live, which is
+   not a game anyone is enjoying. */
+check(results, "the ball search stays out of the way",
+  progress.every((r) => r.searches <= Math.ceil(SECONDS / 90)),
+  progress.map((r) => r.searches).join(", ") + ` (max ${Math.ceil(SECONDS / 90)} per run)`);
 report(results, "soak");

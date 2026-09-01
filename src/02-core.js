@@ -114,6 +114,13 @@ let frenzyT=0,superBumperT=0,goldT=0;
 let mbActive=false,mbJackpot=1,lockedBalls=0,lockLit=false;
 let magGrabs=3,magGrabCool=0;
 let excite=0,lastScoreTime=-99;
+/* Ball search. A real machine watches its switches, and when nothing has been
+   hit for long enough it fires every coil to shake the ball loose. This one
+   watches the score for the same reason: holding both flippers up traps a ball
+   in the V between the tips indefinitely, and a player who never lets go can
+   never lose — which is exactly the bug this was all about. relaxT is how long
+   the flippers refuse to hold, which is what actually ends a cradle. */
+let searchCool=0, flipRelax=0, searches=0;
 let peakDeck=0,visited=[false,false,false,false,false];
 let stormLetters=[false,false,false,false,false];
 let chaosLetters=[false,false,false,false,false];

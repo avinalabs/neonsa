@@ -223,8 +223,9 @@ function circleRect(b,rx,ry,rw,rh){
 function stepFlippers(dt){
   const boost=surgeT>0?1.35:1;
   for(const f of flippers){
-    const target=f.key?f.up:f.rest;
-    const spd=(f.key?24:13)*boost;
+    const key=f.key&&flipRelax<=0;
+    const target=key?f.up:f.rest;
+    const spd=(key?24:13)*boost;
     const prev=f.a;
     f.a+=clamp(target-f.a,-spd*dt,spd*dt);
     f.omega=(f.a-prev)/dt;

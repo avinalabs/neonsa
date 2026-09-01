@@ -55,6 +55,7 @@ async function playOut(style, maxSeconds) {
         ballsPlayed: s.ballsPlayed,
         score: s.score,
         extras: N.extras(),
+        searches: N.searchInfo().n,
       };
     },
     { style, maxSeconds },
@@ -63,7 +64,7 @@ async function playOut(style, maxSeconds) {
 
 console.log("\nendgame — can the game be lost?\n");
 
-const CAP = 1200; // twenty minutes of game clock per run
+const CAP = 1800; // half an hour of game clock per run
 for (const style of ["idle", "flail", "hold"]) {
   const r = await playOut(style, CAP);
   check(
@@ -71,8 +72,9 @@ for (const style of ["idle", "flail", "hold"]) {
     `${style}: game reaches GAME OVER`,
     r.over,
     r.over
-      ? `after ${r.seconds}s, ${r.ballsPlayed} balls, ${r.score.toLocaleString()} pts`
-      : `still playing after ${r.seconds}s on ball ${r.ballNum} with ${r.extras.held} banked`,
+      ? `after ${r.seconds}s, ${r.ballsPlayed} balls, ${r.searches} searches, ${r.score.toLocaleString()} pts`
+      : `still playing after ${r.seconds}s on ball ${r.ballNum}, ${r.ballsPlayed} served, ` +
+        `${r.extras.held} banked of ${r.extras.earned} earned, ${r.searches} searches`,
   );
   check(
     results,
