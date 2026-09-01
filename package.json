@@ -10,8 +10,9 @@
     "test": "node test/smoke.mjs",
     "test:soak": "node test/soak.mjs",
     "test:perf": "node test/perf.mjs",
-    "test:all": "node build.mjs --check && node test/smoke.mjs && node test/interactions.mjs && node test/levels.mjs && node test/soak.mjs && node test/perf.mjs",
+    "test:all": "node build.mjs --check && node test/smoke.mjs && node test/interactions.mjs && node test/levels.mjs && node test/endgame.mjs && node test/soak.mjs && node test/perf.mjs",
     "test:levels": "node test/levels.mjs",
+    "test:endgame": "node test/endgame.mjs",
     "test:interactions": "node test/interactions.mjs"
   },
   "devDependencies": {

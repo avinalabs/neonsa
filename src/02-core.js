@@ -99,6 +99,15 @@ let tiltHeat=0,tilted=false,nudgesUsed=0;
 let shoveX=0,shoveY=0,shoveT=0;      // the table still moving after a nudge
 let nanRecoveries=0;                 // balls rescued from a non-finite state
 let rescues=0;                       // balls put back in play from somewhere unreachable
+/* Where and why, for the test suite. A count alone tells you the net fired; it
+   does not tell you whether it fired on a real pocket or on a slow ball in an
+   empty corner, and those need different fixes. Capped so it cannot grow. */
+let rescueLog=[];
+function logRescue(kind,x,y){
+  if(rescueLog.length<60)
+    rescueLog.push({kind,x:Math.round(x),y:Math.round(y),t:Math.round(timeSec),
+                    level:level?level.id:"tower"});
+}
 let ballSaveT=0,skillDeck=-1,skillArmed=false;
 let stormMeter=0,surge=0,surgeT=0;
 let frenzyT=0,superBumperT=0,goldT=0;

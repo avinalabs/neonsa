@@ -258,7 +258,16 @@ function buildDeep(L){
     {x:cx*1.45,y:h*0.34,r:400,fx:-620,fy:-260},
     {x:cx,     y:h*0.70,r:460,fx:   0,fy:-520},
     {x:cx*0.5, y:h*0.78,r:340,fx: 460,fy: 160},
-    {x:cx*1.5, y:h*0.78,r:340,fx:-460,fy: 160}
+    {x:cx*1.5, y:h*0.78,r:340,fx:-460,fy: 160},
+    /* Undertow along the lower walls. The Deep is thick on purpose — a third
+       of normal gravity against heavy drag — and a ball that drifted into the
+       corner where the left wall turns into the apron had neither the weight
+       to slide nor the speed to bounce, so it sat there until the last-resort
+       return fired. Three times in half an hour of soak, always the same
+       corner. The room already speaks in currents, so it says it in currents:
+       the walls pull you down and back toward the middle. */
+    {x:90,  y:h*0.74,r:430,fx: 560,fy: 320},
+    {x:w-90,y:h*0.74,r:430,fx:-560,fy: 320}
   ];
   spinners.push({x:150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
   spinners.push({x:w-150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
@@ -344,6 +353,7 @@ const LEVEL_ENTRY={
   deep:  ()=>({x:PW*0.24, y:PH*0.26,vx: 620,vy: -160})
 };
 let warpGate=null;                 // the tower scoop we left through
+let levelLost=false;               // drained in the room with no saves left
 let gateCool={spiral:0,forge:0,deep:0};
 const GATE_COOLDOWN=34;
 
@@ -400,6 +410,15 @@ function leaveLevel(paid){
   for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
   const g=warpGate&&scoopBy(warpGate)||null;
   const x=g?g.x:830, y=g?g.y:2200;
+  if(levelLost){
+    levelLost=false;
+    cam.x=x;cam.y=y;cam.tx=x;cam.ty=y;
+    ballInPlunger=false;
+    SND.warpOut();
+    announce("LOST IN THE "+L.short,L.col2,true);
+    endOfBallStart();
+    return;
+  }
   /* Clear of the mouth, not in it. Returning the ball 30px above the gate put
      it straight back inside the capture radius, so the gate swallowed the ball
      it had just spat out — over and over, which is what a player sees as the
@@ -413,6 +432,20 @@ function leaveLevel(paid){
   SND.warpOut();
   if(paid)announce("BACK FROM "+L.short,L.col,false);
   else{announce("THE "+L.short+" SPAT YOU OUT",L.col2,false);SND.levelEnd();}
+}
+/* A hard reset back to the tower with no ball, no sound and no story: used by
+   newGame(), which can be pressed while a warp room is loaded. Without this
+   the fresh game would start inside a one-deck room whose DECKS array has a
+   single entry, and the first launch would read DECKS[3] and crash. */
+function forceTower(){
+  level=null;voice=null;
+  gravMul=1;dragMul=0;swirl=0;
+  levelT=0;levelProg=0;levelGoal=0;levelJack=0;levelDone=false;levelSaves=0;levelHold=false;
+  warpT=0;warpDir=0;warpTo=null;warpGate=null;levelLost=false;
+  for(const k in gateCool)gateCool[k]=0;
+  if(towerStash){restoreWorld(towerStash);towerStash=null;}
+  spiralRings.length=0;pistons.length=0;jellies.length=0;currents.length=0;pearls.length=0;
+  lavaY=0;lavaTarget=0;
 }
 function warpExit(paid){
   if(!level||warpT>0)return;
@@ -477,6 +510,12 @@ function levelDrain(){
       announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);}
     return true;
   }
+  /* Out of saves. The room's generosity is what "no ball lost" meant, and it
+     has run out — so this drain counts, the same as one upstairs. Without
+     this a warp visit was a free ball: two re-serves down here and a third
+     fresh ball handed back on the tower, over and over, and the ball count
+     never fell. */
+  levelLost=true;
   warpExit(false);
   return true;
 }

@@ -497,7 +497,7 @@ function physics(dt){
         ballSaveT=Math.max(ballSaveT,4);
         spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
         announce("BALL RETURNED",IC,false);
-        rescues++;
+        rescues++;logRescue("slow",b.hx,b.hy);
       }
     }
     if(b.ax===undefined){b.ax=b.x;b.ay=b.y;b.at=0;}
@@ -520,7 +520,7 @@ function physics(dt){
           ballSaveT=Math.max(ballSaveT,4);
           spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
           announce("BALL RETURNED",IC,false);
-          rescues++;
+          rescues++;logRescue("pocket",b.ax,b.ay);
         }else if(b.stuckLv>=2){
           b.vx+=rand(-900,900);b.vy-=rand(1300,1900);
           spark(b.x,b.y,12,YL,340);

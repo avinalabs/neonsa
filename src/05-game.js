@@ -54,8 +54,29 @@ function checkExtras(){
   if(score>=1.2e7&&!stats.ex2){stats.ex2=true;awardExtra();}
   if(score>=4e7&&!stats.ex3){stats.ex3=true;awardExtra();}
 }
+/* Extras used to be unlimited from three sources at once — the score
+   thresholds, the mystery award and the storm-meter lightning — and a good
+   game banked them faster than it spent them, so the ball count never reached
+   zero and the game could not be lost. Two caps now: how many you can hold at
+   once, and how many a single game can hand out at all. Past either one the
+   award pays points instead, so it is still worth hitting. Ceiling on a game
+   is therefore BALLS_PER_GAME + MAX_EXTRA_GAME balls, and it always ends. */
+const MAX_EXTRA=3;          // held at once
+const MAX_EXTRA_GAME=5;     // granted over a whole game
+let extrasEarned=0, awardingExtra=false;
 function awardExtra(){
-  extraBalls++;announce("EXTRA BALL!",GR,true);flash(.5,GR);SND.extra();
+  if(extraBalls>=MAX_EXTRA||extrasEarned>=MAX_EXTRA_GAME){
+    if(awardingExtra)return;           // addScore re-enters via checkExtras
+    awardingExtra=true;
+    const p=addScore(400000,830,1200,{col:GR,size:32});
+    announce((extrasEarned>=MAX_EXTRA_GAME?"NO MORE EXTRAS":"EXTRA BALLS FULL")+
+             "  +"+shortNum(p),GR,true);
+    SND.extra();
+    awardingExtra=false;
+    return;
+  }
+  extraBalls++;extrasEarned++;
+  announce("EXTRA BALL!",GR,true);flash(.5,GR);SND.extra();
   const f=focusBall();if(f)ring(f.x,f.y,GR,20,300);
 }
 function addSurge(v){
@@ -937,12 +958,26 @@ function unlock(id,title,desc){
    BALL LIFECYCLE
    ============================================================ */
 let savesThisBall=0;
-function serveBall(auto){
+function serveBall(auto,fromSave){
+  /* The plunger belongs to the tower. If a warp room is still loaded when a
+     ball is served — an end-of-ball bonus finishing after the room took over,
+     say — the ball would spawn at the tower's shooter lane inside a 1520x1900
+     room, outside its walls, with nothing to catch it. Put the tower back. */
+  if(level)forceTower();
   ballInPlunger=true;plungerCharge=0;charging=false;plungerDir=1;
   const b=spawnBall(LAUNCH_PATH[0][0],LAUNCH_PATH[0][1],0,0);
   b.inLane=true;
   ballsPlayed++;
-  ballSaveT=Math.max(ballSaveT,9);
+  /* A tilt ends with the ball that earned it. It used to clear only in
+     endOfBallFinish, which a ball save skips entirely — so a tilt with the
+     save running meant dead flippers, an instant drain, a save, and dead
+     flippers again, for as long as the saves lasted. Unplayable, and it
+     looked permanent. */
+  tilted=false;tiltHeat=0;
+  for(const f of flippers)f.key=false;
+  /* A save is a grace, not a subscription: a fresh ball gets the full nine
+     seconds, a saved one gets four and does not stack. */
+  ballSaveT=fromSave?Math.min(Math.max(ballSaveT,4),4):Math.max(ballSaveT,9);
   skillArmed=true;skillDeck=irand(1,4);
   magGrabs=3;
   cam.x=1500;cam.y=2600;
@@ -964,10 +999,12 @@ function onDrain(b){
   if(state!=="PLAY")return;
   if(balls.some(x=>!x.ghost))return;
   if(mbActive){mbActive=false;mbJackpot=Math.max(1,mbJackpot-0);}
-  if(ballSaveT>0&&savesThisBall<4){
+  /* A tilted ball is a lost ball. Saving it would make the tilt free, and a
+     penalty you never pay is not a penalty. Two saves a ball, not four. */
+  if(!tilted&&ballSaveT>0&&savesThisBall<2){
     savesThisBall++;stats.saves++;
     announce("BALL SAVED!",GR,true);SND.save();flash(.4,GR);
-    serveBall(true);
+    serveBall(true,true);
     return;
   }
   endOfBallStart();

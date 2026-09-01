@@ -43,7 +43,7 @@ function update(dt){
   if(surgeT>0)surgeT-=dt;
   if(slowmoT>0)slowmoT-=dt;
   if(hitStop>0)hitStop-=dt;
-  tiltHeat=Math.max(0,tiltHeat-dt*0.42);
+  tiltHeat=Math.max(0,tiltHeat-dt*0.62);
   if(shoveT>0){shoveT-=dt;if(shoveT<=0){shoveT=0;shoveX=0;shoveY=0;}}
   shakeMag*=Math.pow(0.02,dt);
   flashA*=Math.pow(0.0009,dt);

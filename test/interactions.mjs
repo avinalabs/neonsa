@@ -90,7 +90,13 @@ const TRAPS = async (page, mode) =>
             let gone = false;
             for (let i = 0; i < 60 * seconds; i++) {
               N.step(1);
-              const b = N.info().b[0];
+              const s = N.info();
+              /* A probe dropped near the drain gets served back into the
+                 shooter lane, and a ball waiting for the plunger sits
+                 perfectly still — which is not a trap, it is a player who
+                 has not shot yet. Shoot it. */
+              if (s.inLane) { N.launch(0.7); continue; }
+              const b = s.b[0];
               if (!b) { gone = true; break; }
               if (Math.abs(b.x - h.x) > trapBox * 3 || Math.abs(b.y - h.y) > trapBox * 3) { gone = true; break; }
             }
@@ -106,6 +112,7 @@ const TRAPS = async (page, mode) =>
             let stillStuck = true;
             for (let i = 0; i < 60 * 16; i++) {
               N.step(1);
+              if (N.info().inLane) { N.launch(0.7); stillStuck = false; break; }
               b = N.info().b[0];
               if (!b || Math.abs(b.x - h.x) > trapBox * 3 || Math.abs(b.y - h.y) > trapBox * 3) {
                 stillStuck = false; break;
@@ -170,11 +177,17 @@ for (const id of ["spiral", "forge", "deep"]) {
   await table(id, (page) =>
     page.evaluate((i) => {
       const N = window.__NSA__;
-      N.start(); N.launch(0.6);
+      N.start();
+      /* Shut the gates before playing a ball, or the ball finds one on its
+         own during the settle and the sweep runs on whichever room it fell
+         into — which is what "the sweep is actually running on X" caught. */
+      N.warpsOff();
+      N.launch(0.6);
       for (let k = 0; k < 120; k++) N.step(1);
+      if (N.warping()) return false;
       N.warp(i);
       for (let k = 0; k < 90; k++) N.step(1);
-      if (!N.levelInfo()) return false;
+      if (!N.levelInfo() || N.levelInfo().id !== i) return false;
       N.holdLevel(true);
       return true;
     }, id),

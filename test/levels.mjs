@@ -32,6 +32,11 @@ for (const id of LEVELS) {
       const stalls = [], escapes = [], lives = [];
       let built = null, scored = 0, everDone = false;
       for (let v = 0; v < visits; v++) {
+        /* Let the previous ball finish resolving first. Warping out of an
+           end-of-ball bonus put a tower plunger ball inside the room's
+           world and every measurement after it was nonsense. */
+        for (let i = 0; i < 60 * 20 && N.info().state !== "PLAY"; i++) N.step(1);
+        if (N.info().state !== "PLAY" && !N.revive()) break;
         N.warp(id);
         for (let i = 0; i < 90; i++) N.step(1);      // through the transition
         const info = N.levelInfo();

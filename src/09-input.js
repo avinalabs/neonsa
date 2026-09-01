@@ -4,13 +4,18 @@
 const $=id=>document.getElementById(id);
 
 function newGame(){
+  /* NEW GAME can be pressed from inside a warp room (the game-over screen is
+     reachable from one). Put the tower back before anything else touches the
+     world arrays, or the fresh ball launches into a one-deck level. */
+  forceTower();
   balls.length=0;parts.length=0;floats.length=0;rings.length=0;shards.length=0;
   orbs.length=0;meteors.length=0;drones.length=0;bolts.length=0;
   announceQ.length=0;announceCur=null;toasts.length=0;ACH_LIST.length=0;achieved={};
   score=0;mult=1;combo=0;comboT=0;maxCombo=0;
   frenzyT=0;superBumperT=0;goldT=0;surge=0;surgeT=0;stormMeter=0;
   mbActive=false;mbJackpot=1;lockedBalls=0;lockLit=false;
-  ballNum=1;extraBalls=0;ballsPlayed=0;bonusBank=0;endBonus=0;
+  ballNum=1;extraBalls=0;extrasEarned=0;ballsPlayed=0;bonusBank=0;endBonus=0;
+  savesThisBall=0;
   tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;
   peakDeck=0;visited=[false,false,false,false,false];
   stormLetters=[false,false,false,false,false];chaosLetters=[false,false,false,false,false];
@@ -46,10 +51,14 @@ function newGame(){
 function gameOver(){
   state="OVER";
   durationSec=Math.round(timeSec-gameStartTime);
+  /* Put the tower back before the summary reads DECKS, and so the game-over
+     screen has the real table behind it rather than a warp room. */
+  forceTower();
   balls.length=0;
   const qualifies=!cheatFlag&&(board.length<8||score>board[board.length-1].s)&&score>0;
+  const peak=DECKS[clamp(stats.maxAlt,0,DECKS.length-1)]||DECKS[0];
   $("finalScore").textContent=fmt(score);
-  $("gradeLine").textContent="RANK "+grade()+"   •   PEAK "+DECKS[stats.maxAlt].name+
+  $("gradeLine").textContent="RANK "+grade()+"   •   PEAK "+peak.name+
     "   •   "+stats.missions+" MISSION"+(stats.missions===1?"":"S")+" CLEARED";
   $("voidWarn").classList.toggle("hidden",!cheatFlag);
   $("hudBtns").classList.add("hidden");
@@ -448,6 +457,7 @@ window.__NSA__={
       d:b.deck,rail:b.rail?b.rail.short:null,lane:b.launchT>=0,scoop:b.scoop?b.scoop.name:null,
       mag:!!b.magnet,inLane:b.inLane})),
     cam:{x:Math.round(cam.x),y:Math.round(cam.y),view:Math.round(cam.view)},
+    ballNum,extraBalls,extrasEarned,tilted,ballsPlayed,tiltHeat:+tiltHeat.toFixed(2),
     layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH()),
       clipH:Math.round(clipH()),clipBot:Math.round(clipBotH()),
       frameBot:Math.round(VH-hudBottomH()),clipBotY:Math.round(clipTop()+clipH()),
@@ -493,6 +503,8 @@ window.__NSA__={
     return back?(!!level&&level.id===back):!level;},
   nanCount(){return nanRecoveries;},
   rescueCount(){return rescues;},
+  rescueLog(){return rescueLog.slice();},
+  extras(){return{held:extraBalls,earned:extrasEarned,maxHeld:MAX_EXTRA,maxGame:MAX_EXTRA_GAME};},
   clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
   wallsNear(x,y,r){return walls.filter(w=>{
     const c=closestSeg(x,y,w.x1,w.y1,w.x2,w.y2);

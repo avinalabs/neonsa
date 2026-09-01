@@ -122,7 +122,7 @@ src/                the actual source, split by concern
   07-render.js        world rendering
   08-hud.js           HUD, minimap, score card
   09-input.js         game flow, input, the frame loop
-test/               Playwright smoke, warp-level, soak and performance suites
+test/               Playwright smoke, interaction, warp-level, endgame, soak and perf suites
 docs/               screenshots
 ```
 
@@ -145,13 +145,14 @@ npx playwright install chromium
 npm test               # smoke: 7 viewports, pads vs ball, zoom recovery, game-over, multi-touch
 npm run test:interactions  # touch every element on every table, then sweep a grid
 npm run test:levels    # each warp room built, played, escaped, and timed
+npm run test:endgame   # a whole game played out three ways — it has to end
 npm run test:soak      # 6 x 300 simulated seconds, hunting for stuck balls
 npm run test:perf      # frame-time budget
 ```
 
 The page exposes `window.__NSA__` as a test harness — `start()`, `launch(power)`,
 `step(frames)`, `info()`, `flip(side, on)`, `forceMission(id)`, `forceBoss()`,
-`drain()`, `flipState()`. `step()` drives the simulation directly instead of waiting on
+`drain()`, `flipState()`, `warp(id)`, `extras()`, `rescueLog()`. `step()` drives the simulation directly instead of waiting on
 real frames, so the soak test plays 300 seconds of pinball in about four.
 
 **`test/interactions.mjs` goes looking instead of waiting.** The soak plays and hopes to
@@ -177,6 +178,41 @@ game carries a **last-resort return**: a ball that has stayed within 340px of th
 spot for twelve seconds without scoring is put back into play with a ball save. The soak
 holds it to a budget of roughly one per thousand simulated seconds — it is a safety net,
 and if it starts firing more than that, something reachable is holding the ball.
+
+The net also **logs where it fired**, which is the more useful half. A count tells you it
+went off; a log tells you whether it went off on a real pocket or on a slow ball in an
+empty corner, and those need different fixes. The soak fails if any one spot needs it
+three times. That check found the last one immediately: three returns in half an hour,
+all from `70,1557` in The Deep — the corner where the left wall turns into the apron,
+where a room with a third of normal gravity and heavy drag left a ball with neither the
+weight to slide nor the speed to bounce. The Deep already speaks in currents, so the fix
+is two more of them, pulling the lower walls down and back toward the middle.
+
+**`test/endgame.mjs` proves the game can be lost.** For a while it could not. Extra balls
+came from three uncapped sources at once — three score thresholds, the mystery award and
+the storm meter's lightning — and a drained ball inside a warp room handed you a fresh one
+back on the tower on the way out. A decent player banked them faster than they spent them,
+the ball count climbed instead of falling, and `BALL 1/3 +7` sat in the HUD forever. The
+soak had been printing `0 games played to the end` the whole time; nothing asserted on it,
+so nobody read it. That line is a check now, and this suite plays three whole games —
+never touching a flipper, flailing at them, and cradling both — and each one has to reach
+GAME OVER. The economy it guards:
+
+| | |
+| --- | --- |
+| Balls per game | 3 |
+| Extras held at once | 3 |
+| Extras granted per game | 5 (past that the award pays 400,000 instead) |
+| Ball saves per ball | 2, and never on a tilted ball |
+| Draining inside a warp room | free twice, then it costs the ball |
+
+Eight balls is the ceiling, so every game ends.
+
+**A tilt ends with the ball that earned it.** It used to clear only in `endOfBallFinish()`,
+which a ball save skips entirely — so a tilt while the save was running meant dead
+flippers, an instant drain, a save, and dead flippers again for as long as the saves
+lasted. From the player's side that is a permanent tilt and a dead game. `serveBall()`
+clears it now, and a tilted ball is never saved.
 
 **The soak test looks for motion, not score.** A ball that stays inside a 60px box for
 seven seconds is wedged in the geometry; a ball that scores nothing is just cradled on a

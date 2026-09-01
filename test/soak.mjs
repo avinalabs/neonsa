@@ -20,6 +20,8 @@ const HOLD_FRAMES = 60 * 7;
 const results = [];
 const browser = await launchBrowser();
 const stalls = [];
+const progress = [];
+const rescueSpots = [];
 let finished = 0;
 let totalServes = 0;
 let rescued = 0;
@@ -74,15 +76,19 @@ for (let run = 0; run < RUNS; run++) {
         }
       }
       return { found, over, serves: N.drains(), score: N.info().score,
-               rescues: N.rescueCount(), nan: N.nanCount() };
+               rescues: N.rescueCount(), nan: N.nanCount(),
+               ballNum: N.info().ballNum, extras: N.extras(),
+               rescueLog: N.rescueLog() };
     },
     { seconds: SECONDS, box: BOX, holdFrames: HOLD_FRAMES },
   );
   stalls.push(...out.found);
   rescued += out.rescues;
+  rescueSpots.push(...out.rescueLog.map((r) => `${r.kind}@${r.x},${r.y} (${r.level})`));
   nanned += out.nan;
   if (out.over) finished++;
   totalServes += out.serves;
+  progress.push(out);
   console.log(
     `  run ${run + 1}/${RUNS}: ${out.found.length} stalls, ${out.serves} serves, score ${out.score.toLocaleString()}${out.over ? ", game finished" : ""}`,
   );
@@ -94,6 +100,36 @@ await browser.close();
 
 console.log(
   `\n${RUNS} x ${SECONDS}s simulated, ${totalServes} balls served, ${finished} games played to the end`,
+);
+/* "0 games played to the end" printed here for weeks and nobody read it,
+   because nothing asserted on it: extra balls arrived faster than they were
+   spent and the game could not be lost. Whether a game ends inside a soak run
+   depends on how long the run is, so the end-of-game proof lives in
+   test/endgame.mjs. What this suite can assert cheaply is that balls are
+   actually being consumed, and that the extra-ball caps hold under an hour of
+   flailing — the two things whose absence made the game unlosable. */
+/* The tight bound: a game can serve BALLS_PER_GAME + the per-game extra cap
+   balls, each of which can be saved twice. Anything past that means a source
+   of free balls has escaped its cap again, which is exactly how the game
+   became unlosable. */
+check(
+  results,
+  "no run serves more balls than one game is allowed",
+  progress.every((r) => r.over || r.serves <= (3 + r.extras.maxGame) * 3),
+  progress.map((r) => `${r.serves}/${(3 + r.extras.maxGame) * 3}`).join(", "),
+);
+check(
+  results,
+  "balls are actually being lost, not just banked",
+  progress.some((r) => r.over || r.ballNum > 1),
+  progress.map((r) => (r.over ? "end" : "ball " + r.ballNum)).join(", "),
+);
+check(
+  results,
+  "extra balls stay inside their caps",
+  progress.every((r) => r.extras.earned <= r.extras.maxGame &&
+                        r.extras.held <= r.extras.maxHeld),
+  progress.map((r) => `${r.extras.earned}/${r.extras.maxGame}`).join(", "),
 );
 check(
   results,
@@ -109,7 +145,24 @@ check(
    finding. */
 const budget = Math.max(1, Math.round((RUNS * SECONDS) / 1000));
 check(results, "the last-resort ball return stays rare",
-  rescued <= budget, `${rescued} returns in ${RUNS * SECONDS}s (budget ${budget})`);
+  rescued <= budget,
+  `${rescued} returns in ${RUNS * SECONDS}s (budget ${budget})` +
+    (rescueSpots.length ? ` — ${[...new Set(rescueSpots)].slice(0, 8).join("  ")}` : ""));
+/* Two spots agreeing is a pocket in the table; scattered ones are just slow
+   balls in empty corners, which the net exists to catch. */
+{
+  const tally = {};
+  for (const spot of rescueSpots) {
+    const [kind, pos] = spot.split("@");
+    const [x, y] = pos.split(" ")[0].split(",").map(Number);
+    const key = `${kind}:${Math.round(x / 220)},${Math.round(y / 220)}`;
+    tally[key] = (tally[key] || 0) + 1;
+  }
+  const repeat = Object.entries(tally).filter(([, n]) => n >= 3);
+  check(results, "no single spot keeps needing the last resort",
+    repeat.length === 0,
+    repeat.map(([k, n]) => `${k} x${n}`).join("  "));
+}
 check(results, "no ball ever stops being a number", nanned === 0, `${nanned} recoveries`);
 check(results, "balls actually drain", totalServes > RUNS, `${totalServes} serves`);
 report(results, "soak");

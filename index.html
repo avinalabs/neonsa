@@ -442,6 +442,15 @@ let tiltHeat=0,tilted=false,nudgesUsed=0;
 let shoveX=0,shoveY=0,shoveT=0;      // the table still moving after a nudge
 let nanRecoveries=0;                 // balls rescued from a non-finite state
 let rescues=0;                       // balls put back in play from somewhere unreachable
+/* Where and why, for the test suite. A count alone tells you the net fired; it
+   does not tell you whether it fired on a real pocket or on a slow ball in an
+   empty corner, and those need different fixes. Capped so it cannot grow. */
+let rescueLog=[];
+function logRescue(kind,x,y){
+  if(rescueLog.length<60)
+    rescueLog.push({kind,x:Math.round(x),y:Math.round(y),t:Math.round(timeSec),
+                    level:level?level.id:"tower"});
+}
 let ballSaveT=0,skillDeck=-1,skillArmed=false;
 let stormMeter=0,surge=0,surgeT=0;
 let frenzyT=0,superBumperT=0,goldT=0;
@@ -1153,7 +1162,16 @@ function buildDeep(L){
     {x:cx*1.45,y:h*0.34,r:400,fx:-620,fy:-260},
     {x:cx,     y:h*0.70,r:460,fx:   0,fy:-520},
     {x:cx*0.5, y:h*0.78,r:340,fx: 460,fy: 160},
-    {x:cx*1.5, y:h*0.78,r:340,fx:-460,fy: 160}
+    {x:cx*1.5, y:h*0.78,r:340,fx:-460,fy: 160},
+    /* Undertow along the lower walls. The Deep is thick on purpose — a third
+       of normal gravity against heavy drag — and a ball that drifted into the
+       corner where the left wall turns into the apron had neither the weight
+       to slide nor the speed to bounce, so it sat there until the last-resort
+       return fired. Three times in half an hour of soak, always the same
+       corner. The room already speaks in currents, so it says it in currents:
+       the walls pull you down and back toward the middle. */
+    {x:90,  y:h*0.74,r:430,fx: 560,fy: 320},
+    {x:w-90,y:h*0.74,r:430,fx:-560,fy: 320}
   ];
   spinners.push({x:150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
   spinners.push({x:w-150,y:h*0.5,r:38,ang:0,vel:0,cool:-9,col:IC,deck:0,name:"KELP"});
@@ -1239,6 +1257,7 @@ const LEVEL_ENTRY={
   deep:  ()=>({x:PW*0.24, y:PH*0.26,vx: 620,vy: -160})
 };
 let warpGate=null;                 // the tower scoop we left through
+let levelLost=false;               // drained in the room with no saves left
 let gateCool={spiral:0,forge:0,deep:0};
 const GATE_COOLDOWN=34;
 
@@ -1295,6 +1314,15 @@ function leaveLevel(paid){
   for(let i=balls.length-1;i>=0;i--)balls.splice(i,1);
   const g=warpGate&&scoopBy(warpGate)||null;
   const x=g?g.x:830, y=g?g.y:2200;
+  if(levelLost){
+    levelLost=false;
+    cam.x=x;cam.y=y;cam.tx=x;cam.ty=y;
+    ballInPlunger=false;
+    SND.warpOut();
+    announce("LOST IN THE "+L.short,L.col2,true);
+    endOfBallStart();
+    return;
+  }
   /* Clear of the mouth, not in it. Returning the ball 30px above the gate put
      it straight back inside the capture radius, so the gate swallowed the ball
      it had just spat out — over and over, which is what a player sees as the
@@ -1308,6 +1336,20 @@ function leaveLevel(paid){
   SND.warpOut();
   if(paid)announce("BACK FROM "+L.short,L.col,false);
   else{announce("THE "+L.short+" SPAT YOU OUT",L.col2,false);SND.levelEnd();}
+}
+/* A hard reset back to the tower with no ball, no sound and no story: used by
+   newGame(), which can be pressed while a warp room is loaded. Without this
+   the fresh game would start inside a one-deck room whose DECKS array has a
+   single entry, and the first launch would read DECKS[3] and crash. */
+function forceTower(){
+  level=null;voice=null;
+  gravMul=1;dragMul=0;swirl=0;
+  levelT=0;levelProg=0;levelGoal=0;levelJack=0;levelDone=false;levelSaves=0;levelHold=false;
+  warpT=0;warpDir=0;warpTo=null;warpGate=null;levelLost=false;
+  for(const k in gateCool)gateCool[k]=0;
+  if(towerStash){restoreWorld(towerStash);towerStash=null;}
+  spiralRings.length=0;pistons.length=0;jellies.length=0;currents.length=0;pearls.length=0;
+  lavaY=0;lavaTarget=0;
 }
 function warpExit(paid){
   if(!level||warpT>0)return;
@@ -1372,6 +1414,12 @@ function levelDrain(){
       announce("THE ROOM KEEPS YOU  ("+levelSaves+" left)",level.col2,false);}
     return true;
   }
+  /* Out of saves. The room's generosity is what "no ball lost" meant, and it
+     has run out — so this drain counts, the same as one upstairs. Without
+     this a warp visit was a free ball: two re-serves down here and a third
+     fresh ball handed back on the tower, over and over, and the ball count
+     never fell. */
+  levelLost=true;
   warpExit(false);
   return true;
 }
@@ -1874,7 +1922,7 @@ function physics(dt){
         ballSaveT=Math.max(ballSaveT,4);
         spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
         announce("BALL RETURNED",IC,false);
-        rescues++;
+        rescues++;logRescue("slow",b.hx,b.hy);
       }
     }
     if(b.ax===undefined){b.ax=b.x;b.ay=b.y;b.at=0;}
@@ -1897,7 +1945,7 @@ function physics(dt){
           ballSaveT=Math.max(ballSaveT,4);
           spark(b.x,b.y,18,IC,420);ring(b.x,b.y,IC,14,160);
           announce("BALL RETURNED",IC,false);
-          rescues++;
+          rescues++;logRescue("pocket",b.ax,b.ay);
         }else if(b.stuckLv>=2){
           b.vx+=rand(-900,900);b.vy-=rand(1300,1900);
           spark(b.x,b.y,12,YL,340);
@@ -2136,8 +2184,29 @@ function checkExtras(){
   if(score>=1.2e7&&!stats.ex2){stats.ex2=true;awardExtra();}
   if(score>=4e7&&!stats.ex3){stats.ex3=true;awardExtra();}
 }
+/* Extras used to be unlimited from three sources at once — the score
+   thresholds, the mystery award and the storm-meter lightning — and a good
+   game banked them faster than it spent them, so the ball count never reached
+   zero and the game could not be lost. Two caps now: how many you can hold at
+   once, and how many a single game can hand out at all. Past either one the
+   award pays points instead, so it is still worth hitting. Ceiling on a game
+   is therefore BALLS_PER_GAME + MAX_EXTRA_GAME balls, and it always ends. */
+const MAX_EXTRA=3;          // held at once
+const MAX_EXTRA_GAME=5;     // granted over a whole game
+let extrasEarned=0, awardingExtra=false;
 function awardExtra(){
-  extraBalls++;announce("EXTRA BALL!",GR,true);flash(.5,GR);SND.extra();
+  if(extraBalls>=MAX_EXTRA||extrasEarned>=MAX_EXTRA_GAME){
+    if(awardingExtra)return;           // addScore re-enters via checkExtras
+    awardingExtra=true;
+    const p=addScore(400000,830,1200,{col:GR,size:32});
+    announce((extrasEarned>=MAX_EXTRA_GAME?"NO MORE EXTRAS":"EXTRA BALLS FULL")+
+             "  +"+shortNum(p),GR,true);
+    SND.extra();
+    awardingExtra=false;
+    return;
+  }
+  extraBalls++;extrasEarned++;
+  announce("EXTRA BALL!",GR,true);flash(.5,GR);SND.extra();
   const f=focusBall();if(f)ring(f.x,f.y,GR,20,300);
 }
 function addSurge(v){
@@ -3019,12 +3088,26 @@ function unlock(id,title,desc){
    BALL LIFECYCLE
    ============================================================ */
 let savesThisBall=0;
-function serveBall(auto){
+function serveBall(auto,fromSave){
+  /* The plunger belongs to the tower. If a warp room is still loaded when a
+     ball is served — an end-of-ball bonus finishing after the room took over,
+     say — the ball would spawn at the tower's shooter lane inside a 1520x1900
+     room, outside its walls, with nothing to catch it. Put the tower back. */
+  if(level)forceTower();
   ballInPlunger=true;plungerCharge=0;charging=false;plungerDir=1;
   const b=spawnBall(LAUNCH_PATH[0][0],LAUNCH_PATH[0][1],0,0);
   b.inLane=true;
   ballsPlayed++;
-  ballSaveT=Math.max(ballSaveT,9);
+  /* A tilt ends with the ball that earned it. It used to clear only in
+     endOfBallFinish, which a ball save skips entirely — so a tilt with the
+     save running meant dead flippers, an instant drain, a save, and dead
+     flippers again, for as long as the saves lasted. Unplayable, and it
+     looked permanent. */
+  tilted=false;tiltHeat=0;
+  for(const f of flippers)f.key=false;
+  /* A save is a grace, not a subscription: a fresh ball gets the full nine
+     seconds, a saved one gets four and does not stack. */
+  ballSaveT=fromSave?Math.min(Math.max(ballSaveT,4),4):Math.max(ballSaveT,9);
   skillArmed=true;skillDeck=irand(1,4);
   magGrabs=3;
   cam.x=1500;cam.y=2600;
@@ -3046,10 +3129,12 @@ function onDrain(b){
   if(state!=="PLAY")return;
   if(balls.some(x=>!x.ghost))return;
   if(mbActive){mbActive=false;mbJackpot=Math.max(1,mbJackpot-0);}
-  if(ballSaveT>0&&savesThisBall<4){
+  /* A tilted ball is a lost ball. Saving it would make the tilt free, and a
+     penalty you never pay is not a penalty. Two saves a ball, not four. */
+  if(!tilted&&ballSaveT>0&&savesThisBall<2){
     savesThisBall++;stats.saves++;
     announce("BALL SAVED!",GR,true);SND.save();flash(.4,GR);
-    serveBall(true);
+    serveBall(true,true);
     return;
   }
   endOfBallStart();
@@ -3138,7 +3223,7 @@ function update(dt){
   if(surgeT>0)surgeT-=dt;
   if(slowmoT>0)slowmoT-=dt;
   if(hitStop>0)hitStop-=dt;
-  tiltHeat=Math.max(0,tiltHeat-dt*0.42);
+  tiltHeat=Math.max(0,tiltHeat-dt*0.62);
   if(shoveT>0){shoveT-=dt;if(shoveT<=0){shoveT=0;shoveX=0;shoveY=0;}}
   shakeMag*=Math.pow(0.02,dt);
   flashA*=Math.pow(0.0009,dt);
@@ -5010,13 +5095,18 @@ function wrapText(x,text,px,py,maxW,lh){
 const $=id=>document.getElementById(id);
 
 function newGame(){
+  /* NEW GAME can be pressed from inside a warp room (the game-over screen is
+     reachable from one). Put the tower back before anything else touches the
+     world arrays, or the fresh ball launches into a one-deck level. */
+  forceTower();
   balls.length=0;parts.length=0;floats.length=0;rings.length=0;shards.length=0;
   orbs.length=0;meteors.length=0;drones.length=0;bolts.length=0;
   announceQ.length=0;announceCur=null;toasts.length=0;ACH_LIST.length=0;achieved={};
   score=0;mult=1;combo=0;comboT=0;maxCombo=0;
   frenzyT=0;superBumperT=0;goldT=0;surge=0;surgeT=0;stormMeter=0;
   mbActive=false;mbJackpot=1;lockedBalls=0;lockLit=false;
-  ballNum=1;extraBalls=0;ballsPlayed=0;bonusBank=0;endBonus=0;
+  ballNum=1;extraBalls=0;extrasEarned=0;ballsPlayed=0;bonusBank=0;endBonus=0;
+  savesThisBall=0;
   tiltHeat=0;tilted=false;nudgesUsed=0;ballSaveT=0;
   peakDeck=0;visited=[false,false,false,false,false];
   stormLetters=[false,false,false,false,false];chaosLetters=[false,false,false,false,false];
@@ -5052,10 +5142,14 @@ function newGame(){
 function gameOver(){
   state="OVER";
   durationSec=Math.round(timeSec-gameStartTime);
+  /* Put the tower back before the summary reads DECKS, and so the game-over
+     screen has the real table behind it rather than a warp room. */
+  forceTower();
   balls.length=0;
   const qualifies=!cheatFlag&&(board.length<8||score>board[board.length-1].s)&&score>0;
+  const peak=DECKS[clamp(stats.maxAlt,0,DECKS.length-1)]||DECKS[0];
   $("finalScore").textContent=fmt(score);
-  $("gradeLine").textContent="RANK "+grade()+"   •   PEAK "+DECKS[stats.maxAlt].name+
+  $("gradeLine").textContent="RANK "+grade()+"   •   PEAK "+peak.name+
     "   •   "+stats.missions+" MISSION"+(stats.missions===1?"":"S")+" CLEARED";
   $("voidWarn").classList.toggle("hidden",!cheatFlag);
   $("hudBtns").classList.add("hidden");
@@ -5454,6 +5548,7 @@ window.__NSA__={
       d:b.deck,rail:b.rail?b.rail.short:null,lane:b.launchT>=0,scoop:b.scoop?b.scoop.name:null,
       mag:!!b.magnet,inLane:b.inLane})),
     cam:{x:Math.round(cam.x),y:Math.round(cam.y),view:Math.round(cam.view)},
+    ballNum,extraBalls,extrasEarned,tilted,ballsPlayed,tiltHeat:+tiltHeat.toFixed(2),
     layout:{top:Math.round(playTop()),h:Math.round(playH()),bot:Math.round(hudBottomH()),
       clipH:Math.round(clipH()),clipBot:Math.round(clipBotH()),
       frameBot:Math.round(VH-hudBottomH()),clipBotY:Math.round(clipTop()+clipH()),
@@ -5499,6 +5594,8 @@ window.__NSA__={
     return back?(!!level&&level.id===back):!level;},
   nanCount(){return nanRecoveries;},
   rescueCount(){return rescues;},
+  rescueLog(){return rescueLog.slice();},
+  extras(){return{held:extraBalls,earned:extrasEarned,maxHeld:MAX_EXTRA,maxGame:MAX_EXTRA_GAME};},
   clearDir(x,y){return +clearestDir(x,y).toFixed(3);},
   wallsNear(x,y,r){return walls.filter(w=>{
     const c=closestSeg(x,y,w.x1,w.y1,w.x2,w.y2);

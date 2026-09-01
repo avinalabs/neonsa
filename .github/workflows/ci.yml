@@ -30,5 +30,8 @@ jobs:
       - name: Warp levels
         run: node test/levels.mjs 2 60
 
+      - name: The game can be lost
+        run: node test/endgame.mjs
+
       - name: Soak test
         run: node test/soak.mjs 3 200
