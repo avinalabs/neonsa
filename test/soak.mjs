@@ -121,8 +121,11 @@ check(
 check(
   results,
   "balls are actually being lost, not just banked",
-  progress.some((r) => r.over || r.ballNum > 1),
-  progress.map((r) => (r.over ? "end" : "ball " + r.ballNum)).join(", "),
+  // A spent extra ball starts another turn without advancing the numbered ball.
+  progress.some((r) => r.over || r.ballNum > 1 || r.extras.earned > r.extras.held),
+  progress.map((r) => `${r.over ? "end" : "ball " + r.ballNum}: ` +
+    `${r.extras.earned} earned, ${r.extras.held} held, ` +
+    `${r.extras.earned - r.extras.held} extras consumed`).join(", "),
 );
 check(
   results,

@@ -21,6 +21,9 @@ jobs:
       - name: index.html is in sync with src/
         run: node build.mjs --check
 
+      - name: Multiball drain regression
+        run: node test/multiball.mjs .
+
       - name: Smoke tests
         run: node test/smoke.mjs
 

@@ -501,6 +501,9 @@ function levelTick(dt){
    bounce ten seconds in wastes the whole visit and the gate's cooldown. */
 function levelDrain(){
   if(!level)return false;
+  /* Losing an extra ball must not spend a room save or end the visit.
+     Physics has already removed the drained ball; only the last real ball counts. */
+  if(balls.some(b=>!b.gone&&!b.ghost))return true;
   if(levelHold||levelSaves>0){          // levelHold: the test harness keeps the room open
     if(!levelHold)levelSaves--;
     const e=LEVEL_ENTRY[level.id]();
